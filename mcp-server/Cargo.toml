@@ -1,0 +1,8 @@
+[package]
+name = "mcp-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+# TODO: Add Anthropic Rust SDK for MCP when implementing

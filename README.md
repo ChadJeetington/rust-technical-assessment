@@ -111,10 +111,10 @@ anvil --fork-url https://eth-mainnet.g.alchemy.com/v2/4UjEl1ULr2lQYsGR5n7gGKd3pz
 - **Network**: `127.0.0.1:8545`
 
 ### Prerequisites
-- ✅ Foundry toolchain installation
+- ✅ **Foundry v1.3.2-stable** (forge, cast, anvil)
 - ✅ Anthropic API key configuration
 - ✅ RIG framework dependencies
-- ✅ Rust development environment
+- ✅ **Rust 1.85+ with Edition 2024**
 
 ## 📋 Implementation Strategy
 

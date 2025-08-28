@@ -4,5 +4,24 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-tokio = { version = "1.0", features = ["full"] }
-# TODO: Add RIG framework and Claude API dependencies when implementing
+# RIG Framework with Anthropic support  
+rig-core = "0.8"
+# HTTP client for MCP communication
+reqwest = { version = "0.11", features = ["json"] }
+# Async runtime
+tokio.workspace = true
+# CLI framework
+clap = { version = "4.4", features = ["derive"] }
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+# JSON handling
+serde.workspace = true
+serde_json.workspace = true
+# Environment variables
+dotenv = "0.15"
+# Terminal input/output
+rustyline = "14.0"
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"

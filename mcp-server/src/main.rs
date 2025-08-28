@@ -32,9 +32,13 @@ async fn main() -> Result<()> {
     tracing::info!("🌐 HTTP Server listening on http://{}:{}", host, port);
     tracing::info!("📡 Connecting to anvil network at 127.0.0.1:8545");
 
-    // Create StreamableHttpService following the working example pattern
+    // Create a pre-initialized blockchain service since StreamableHttpService expects sync factory
+    let blockchain_service = BlockchainService::new().await
+        .map_err(|e| anyhow::anyhow!("Failed to create blockchain service: {}", e))?;
+    
+    // Create StreamableHttpService with sync constructor
     let service = StreamableHttpService::new(
-        || Ok(BlockchainService::new()),
+        move || Ok(blockchain_service.clone()),
         LocalSessionManager::default().into(),
         Default::default(),
     );

@@ -1,16 +1,21 @@
 //! Blockchain MCP Server Implementation
 //! 
 //! This module implements the core blockchain functionality as MCP tools.
-//! Following the PRD example and using Foundry's cast functionality.
+//! Following the PRD example exactly - using Cast struct directly from foundry.
 //! 
 //! Tools exposed:
-//! - balance: Get ETH balance of an address (following PRD example on line 34-50)
-//! - transfer: Send ETH between addresses 
-//! - is_contract_deployed: Check if contract code exists at address
+//! - balance: Get ETH balance of an address (exact PRD example implementation)
+//! - transfer: Send ETH between addresses using Cast::send
+//! - is_contract_deployed: Check if contract code exists using Cast::code
 
-use std::process::Command;
-
-use anyhow::Result;
+use alloy_ens::NameOrAddress;
+use alloy_network::AnyNetwork;
+use alloy_primitives::{Address, U256};
+use alloy_provider::{Provider, ProviderBuilder, RootProvider};
+use alloy_rpc_types::TransactionRequest;
+use alloy_serde::WithOtherFields;
+use cast::Cast;
+use eyre::Result;
 use rmcp::{
     ErrorData as McpError, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -19,20 +24,19 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info};
+use std::str::FromStr;
+use tracing::info;
 
 /// Request structure for balance queries
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct BalanceRequest {
     #[schemars(description = "The address or ENS name to check balance for")]
-    pub address: String,
+    pub who: String,
 }
 
 /// Request structure for ETH transfers
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TransferRequest {
-    #[schemars(description = "Sender address (defaults to Alice if not provided)")]
-    pub from: Option<String>,
     #[schemars(description = "Recipient address")]
     pub to: String,
     #[schemars(description = "Amount in ETH (e.g., '1.0')")]
@@ -46,15 +50,15 @@ pub struct ContractDeploymentRequest {
     pub address: String,
 }
 
-/// Blockchain MCP Service
+/// Blockchain MCP Service - Following PRD Example Exactly
 /// 
-/// Exposes Foundry functionality as MCP tools, connecting to anvil at 127.0.0.1:8545
+/// This matches the "MyMcp" struct from the PRD example, using Cast directly
 #[derive(Clone)]
 pub struct BlockchainService {
-    /// RPC URL for the anvil network
-    rpc_url: String,
+    /// Provider for blockchain connection (we'll create Cast on-demand)
+    provider: RootProvider<AnyNetwork>,
     /// Alice's address (account 0 from PRD)
-    alice_address: String,
+    alice_address: Address,
     /// Alice's private key for transactions
     alice_private_key: String,
     /// Tool router for MCP
@@ -64,156 +68,98 @@ pub struct BlockchainService {
 #[tool_router]
 impl BlockchainService {
     /// Create a new blockchain service instance
-    pub fn new() -> Self {
-        let rpc_url = "http://127.0.0.1:8545".to_string();
+    pub async fn new() -> Result<Self> {
+        let rpc_url = "http://127.0.0.1:8545";
         
         // Alice's address and private key from PRD (account 0)
-        let alice_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".to_string();
+        let alice_address = Address::from_str("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")?;
         let alice_private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80".to_string();
 
-        info!("🔗 Blockchain service configured for anvil network");
+        // Create provider connection to anvil
+        let provider = ProviderBuilder::<_, _, AnyNetwork>::default()
+            .connect(rpc_url)
+            .await?;
+
+        info!("🔗 Blockchain service configured for anvil network at {}", rpc_url);
         info!("👤 Alice address: {}", alice_address);
 
-        Self {
-            rpc_url,
+        Ok(Self {
+            provider,
             alice_address,
             alice_private_key,
             tool_router: Self::tool_router(),
-        }
+        })
     }
 
-    /// Get the balance of an account using cast balance
-    /// Following PRD example structure (lines 34-50)
-    #[tool(description = "Get the ETH balance of an address in ether")]
+    /// Get the balance of an account in wei - Following PRD Example Pattern
+    #[tool(description = "Get the balance of an account in wei")]
     async fn balance(
         &self,
-        Parameters(BalanceRequest { address }): Parameters<BalanceRequest>,
+        Parameters(BalanceRequest { who }): Parameters<BalanceRequest>,
     ) -> Result<CallToolResult, McpError> {
-        debug!("💰 Querying balance for address: {}", address);
+        let address = NameOrAddress::from(who)
+            .resolve(&self.provider)
+            .await
+            .unwrap();
+        let balance = self.provider.get_balance(address).await.unwrap();
 
-        // Use cast balance command following Foundry patterns
-        let output = Command::new("cast")
-            .args([
-                "balance",
-                &address,
-                "--ether", // Return in ETH units
-                "--rpc-url",
-                &self.rpc_url,
-            ])
-            .output()
-            .map_err(|e| {
-                error!("Failed to execute cast balance: {}", e);
-                McpError::internal_error(format!("Failed to execute cast balance: {}", e), None)
-            })?;
-
-        if !output.status.success() {
-            let error_msg = String::from_utf8_lossy(&output.stderr);
-            error!("Cast balance failed: {}", error_msg);
-            return Err(McpError::internal_error(format!(
-                "Cast balance failed: {}",
-                error_msg
-            ), None));
-        }
-
-        let balance = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        info!("✅ Balance query successful: {} ETH", balance);
-
-        Ok(CallToolResult::success(vec![Content::text(format!(
-            "Balance: {} ETH",
-            balance
-        ))]))
+        Ok(CallToolResult::success(vec![Content::text(
+            balance.to_string(),
+        )]))
     }
 
-    /// Transfer ETH between addresses using cast send
-    #[tool(description = "Send ETH from one address to another")]
-    async fn transfer(
+    /// Send ETH from Alice to another address using Cast::send
+    #[tool(description = "Send ETH from Alice to another address")]
+    async fn send_eth(
         &self,
-        Parameters(TransferRequest { from, to, amount }): Parameters<TransferRequest>,
+        Parameters(TransferRequest { to, amount }): Parameters<TransferRequest>,
     ) -> Result<CallToolResult, McpError> {
-        // Use Alice as default sender if not specified (PRD requirement)
-        let from_address = from.unwrap_or_else(|| self.alice_address.clone());
+        let to_address = NameOrAddress::from(to)
+            .resolve(&self.provider)
+            .await
+            .unwrap();
         
-        info!("💸 Transferring {} ETH from {} to {}", amount, from_address, to);
-
-        // Use cast send to perform the transfer
-        let output = Command::new("cast")
-            .args([
-                "send",
-                &to,
-                "--value",
-                &format!("{}ether", amount), // Convert to wei
-                "--private-key",
-                &self.alice_private_key,
-                "--rpc-url",
-                &self.rpc_url,
-            ])
-            .output()
-            .map_err(|e| {
-                error!("Failed to execute cast send: {}", e);
-                McpError::internal_error(format!("Failed to execute cast send: {}", e), None)
-            })?;
-
-        if !output.status.success() {
-            let error_msg = String::from_utf8_lossy(&output.stderr);
-            error!("Cast send failed: {}", error_msg);
-            return Err(McpError::internal_error(format!(
-                "Cast send failed: {}",
-                error_msg
-            ), None));
-        }
-
-        let tx_hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        info!("✅ Transfer successful: {}", tx_hash);
-
-        Ok(CallToolResult::success(vec![Content::text(format!(
-            "Transfer successful!\nTransaction hash: {}\nSent {} ETH from {} to {}",
-            tx_hash, amount, from_address, to
-        ))]))
+        // Parse amount to wei
+        let amount_wei = U256::from_str(&format!("{}000000000000000000", amount.replace(".", "")))
+            .unwrap();
+        
+        // Create transaction request
+        let tx = TransactionRequest::default()
+            .to(to_address)
+            .value(amount_wei)
+            .from(self.alice_address);
+        
+        let tx = WithOtherFields::new(tx);
+        
+        // Create Cast instance and send transaction
+        let cast = Cast::new(self.provider.clone());
+        let pending_tx = cast.send(tx).await.unwrap();
+        let tx_hash = *pending_tx.tx_hash();
+        
+        Ok(CallToolResult::success(vec![Content::text(
+            format!("Transaction sent: {}", tx_hash)
+        )]))
     }
 
-    /// Check if a contract is deployed at the given address
+    /// Check if a contract is deployed using Cast::code
     #[tool(description = "Check if a contract is deployed at the specified address")]
     async fn is_contract_deployed(
         &self,
         Parameters(ContractDeploymentRequest { address }): Parameters<ContractDeploymentRequest>,
     ) -> Result<CallToolResult, McpError> {
-        debug!("🔍 Checking contract deployment at address: {}", address);
-
-        // Use cast code to check if there's code at the address
-        let output = Command::new("cast")
-            .args([
-                "code",
-                &address,
-                "--rpc-url",
-                &self.rpc_url,
-            ])
-            .output()
-            .map_err(|e| {
-                error!("Failed to execute cast code: {}", e);
-                McpError::internal_error(format!("Failed to execute cast code: {}", e), None)
-            })?;
-
-        if !output.status.success() {
-            let error_msg = String::from_utf8_lossy(&output.stderr);
-            error!("Cast code failed: {}", error_msg);
-            return Err(McpError::internal_error(format!(
-                "Cast code failed: {}",
-                error_msg
-            ), None));
-        }
-
-        let code = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let addr = Address::from_str(&address).unwrap();
+        
+        // Create Cast instance and check if there's code at the address
+        let cast = Cast::new(self.provider.clone());
+        let code = cast.code(addr, None, false).await.unwrap();
         
         // Contract is deployed if code is not "0x" (empty)
         let is_deployed = !code.is_empty() && code != "0x";
         
-        info!("✅ Contract deployment check: {} - {}", address, if is_deployed { "DEPLOYED" } else { "NOT DEPLOYED" });
-
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Contract at {} is {}\nBytecode: {}",
+            "Contract at {} is {}",
             address,
-            if is_deployed { "DEPLOYED" } else { "NOT DEPLOYED" },
-            if code.len() > 100 { format!("{}... ({} bytes)", &code[..100], code.len()) } else { code }
+            if is_deployed { "DEPLOYED" } else { "NOT DEPLOYED" }
         ))]))
     }
 }

@@ -3,6 +3,10 @@ name = "mcp-server"
 version.workspace = true
 edition.workspace = true
 
+[lib]
+name = "mcp_server"
+path = "src/lib.rs"
+
 [dependencies]
 # MCP Framework
 rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk.git", features = [
@@ -34,6 +38,18 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Schema generation
 schemars = "1.0"
 
-# Ethereum/Cast integration
-alloy-primitives = "0.8"
+# Ethereum/Cast integration - Direct Foundry Cast usage
+cast = { path = "../../foundry/crates/cast", default-features = false }
+alloy-primitives = "1.3.1"
+alloy-provider = { version = "1.0.23", features = ["reqwest"] }
+alloy-rpc-types = "1.0.23"
+alloy-ens = "1.0.23"
+alloy-network = "1.0.23"
+alloy-serde = "1.0.23"
+reqwest = { version = "0.11", features = ["json"] }
+eyre = "0.6"
+
+[dev-dependencies]
+# Testing dependencies
+tokio-test = "0.4"
 reqwest = { version = "0.11", features = ["json"] }

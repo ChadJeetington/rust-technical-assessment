@@ -4824,6 +4824,7 @@ dependencies = [
  "anyhow",
  "axum",
  "cast",
+ "dotenv",
  "eyre",
  "reqwest 0.11.27",
  "rmcp 0.6.0",

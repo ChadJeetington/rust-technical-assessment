@@ -48,6 +48,7 @@ alloy-network = "1.0.23"
 alloy-serde = "1.0.23"
 reqwest = { version = "0.11", features = ["json"] }
 eyre = "0.6"
+dotenv = "0.15"
 
 [dev-dependencies]
 # Testing dependencies

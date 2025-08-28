@@ -13,7 +13,7 @@ use rig::client::CompletionClient;
 use rmcp::{
     transport::StreamableHttpClientTransport,
     model::{ClientInfo, ClientCapabilities, Implementation, Tool},
-    ServiceExt,
+    ServiceExt, RoleClient,
 };
 use tracing::{debug, error, info, warn};
 
@@ -21,6 +21,8 @@ use tracing::{debug, error, info, warn};
 pub struct BlockchainAgent {
     /// Claude AI agent configured with MCP tools
     claude_agent: rig::agent::Agent<anthropic::completion::CompletionModel>,
+    /// MCP client that must be kept alive for the connection
+    _mcp_client: rmcp::service::RunningService<RoleClient, rmcp::model::InitializeRequestParam>,
 }
 
 impl BlockchainAgent {
@@ -80,7 +82,7 @@ impl BlockchainAgent {
             .temperature(0.1) // Low temperature for consistent responses
             .max_tokens(2000); // Increased for more detailed responses
         
-        // Add each MCP tool to the agent using fold pattern
+        // Add each MCP tool to the agent using fold pattern - following rmcp.rs example
         let claude_agent = tools
             .into_iter()
             .fold(agent_builder, |agent, tool| {
@@ -93,6 +95,7 @@ impl BlockchainAgent {
         
         Ok(Self {
             claude_agent,
+            _mcp_client: mcp_client,
         })
     }
 

@@ -25,7 +25,7 @@ use rmcp::{
 };
 use serde::{Deserialize, Serialize};
 use std::{env, str::FromStr};
-use tracing::info;
+use tracing::{info, error};
 
 /// Request structure for balance queries
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -53,7 +53,7 @@ pub struct ContractDeploymentRequest {
 /// Request structure for ERC-20 token balance queries
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TokenBalanceRequest {
-    #[schemars(description = "Token contract address (e.g., USDC: 0xA0b86a33E6441F8C8c7014b8C8C1D8C8c1d8C8C1)")]
+    #[schemars(description = "Token contract address (e.g., USDC: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)")]
     pub token_address: String,
     #[schemars(description = "Account address to check balance for")]
     pub account_address: String,
@@ -85,7 +85,6 @@ pub struct ValidatedAddress {
     pub address: String,
     pub resolved_address: Address,
     pub address_type: String,
-    pub is_valid: bool,
 }
 
 /// Blockchain MCP Service - Following PRD Example Exactly
@@ -299,10 +298,20 @@ impl BlockchainService {
         &self,
         Parameters(TokenBalanceRequest { token_address, account_address }): Parameters<TokenBalanceRequest>,
     ) -> Result<CallToolResult, McpError> {
+        info!("🔍 Starting token balance query for token: {}, account: {}", token_address, account_address);
+        
         let token_addr = Address::from_str(&token_address)
-            .map_err(|e| McpError::invalid_params(format!("Invalid token address: {}", e), None))?;
+            .map_err(|e| {
+                error!("❌ Invalid token address: {}", e);
+                McpError::invalid_params(format!("Invalid token address: {}", e), None)
+            })?;
         let account_addr = Address::from_str(&account_address)
-            .map_err(|e| McpError::invalid_params(format!("Invalid account address: {}", e), None))?;
+            .map_err(|e| {
+                error!("❌ Invalid account address: {}", e);
+                McpError::invalid_params(format!("Invalid account address: {}", e), None)
+            })?;
+        
+        info!("✅ Address validation passed");
         
         // ERC-20 balanceOf(address) function selector: 0x70a08231
         // Encode the function call: balanceOf(account_address)
@@ -315,9 +324,16 @@ impl BlockchainService {
             .to(token_addr)
             .input(Bytes::from(call_data).into());
         
+        info!("📞 Making balanceOf call to token contract...");
+        
         // Make the call
         let result = self.provider.call(WithOtherFields::new(call_request)).await
-            .map_err(|e| McpError::internal_error(format!("Failed to call token contract: {}", e), None))?;
+            .map_err(|e| {
+                error!("❌ Failed to call token contract: {}", e);
+                McpError::internal_error(format!("Failed to call token contract: {}", e), None)
+            })?;
+        
+        info!("✅ balanceOf call successful, result length: {}", result.len());
         
         // Decode the result (U256 balance)
         let balance = if result.len() >= 32 {
@@ -326,8 +342,12 @@ impl BlockchainService {
             U256::ZERO
         };
         
+        info!("📊 Decoded balance: {}", balance);
+        
         // Try to get token symbol and decimals for better formatting
+        info!("🔍 Getting token info (symbol and decimals)...");
         let (symbol, decimals) = self.get_token_info(&token_addr).await;
+        info!("✅ Token info: symbol={}, decimals={}", symbol, decimals);
         
         let formatted_balance = if decimals > 0 {
             let divisor = U256::from(10).pow(U256::from(decimals));
@@ -338,32 +358,45 @@ impl BlockchainService {
             format!("{} {}", balance, symbol)
         };
         
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        let response_text = format!(
             "Token Balance:\nAccount: {}\nToken: {} ({})\nBalance: {} (raw: {})",
             account_address, token_address, symbol, formatted_balance, balance
-        ))]))
+        );
+        
+        info!("✅ Token balance query completed successfully");
+        info!("📝 Response: {}", response_text);
+        
+        Ok(CallToolResult::success(vec![Content::text(response_text)]))
     }
 
     /// Helper function to get token symbol and decimals
     async fn get_token_info(&self, token_addr: &Address) -> (String, u8) {
+        info!("🔍 Getting token info for address: {}", token_addr);
+        
         // Try to get symbol - ERC-20 symbol() function selector: 0x95d89b41
         let symbol_call = TransactionRequest::default()
             .to(*token_addr)
             .input(Bytes::from([0x95, 0xd8, 0x9b, 0x41]).into());
         
         let symbol = if let Ok(result) = self.provider.call(WithOtherFields::new(symbol_call)).await {
+            info!("✅ Symbol call successful, result length: {}", result.len());
             // Decode string (skip first 64 bytes for offset and length, then read the string)
             if result.len() > 64 {
                 let length = u32::from_be_bytes([result[60], result[61], result[62], result[63]]) as usize;
                 if result.len() >= 64 + length {
-                    String::from_utf8(result[64..64+length].to_vec()).unwrap_or("UNKNOWN".to_string())
+                    let symbol_str = String::from_utf8(result[64..64+length].to_vec()).unwrap_or("UNKNOWN".to_string());
+                    info!("📊 Decoded symbol: {}", symbol_str);
+                    symbol_str
                 } else {
+                    info!("⚠️  Symbol result too short for decoding");
                     "UNKNOWN".to_string()
                 }
             } else {
+                info!("⚠️  Symbol result too short");
                 "UNKNOWN".to_string()
             }
         } else {
+            info!("⚠️  Symbol call failed");
             "UNKNOWN".to_string()
         };
         
@@ -373,15 +406,21 @@ impl BlockchainService {
             .input(Bytes::from([0x31, 0x3c, 0xe5, 0x67]).into());
         
         let decimals = if let Ok(result) = self.provider.call(WithOtherFields::new(decimals_call)).await {
+            info!("✅ Decimals call successful, result length: {}", result.len());
             if result.len() >= 32 {
-                result[31] // Last byte should contain decimals for most tokens
+                let decimals_val = result[31]; // Last byte should contain decimals for most tokens
+                info!("📊 Decoded decimals: {}", decimals_val);
+                decimals_val
             } else {
+                info!("⚠️  Decimals result too short, defaulting to 18");
                 18 // Default to 18 decimals
             }
         } else {
+            info!("⚠️  Decimals call failed, defaulting to 18");
             18 // Default to 18 decimals
         };
         
+        info!("✅ Token info complete: symbol={}, decimals={}", symbol, decimals);
         (symbol, decimals)
     }
 
@@ -396,7 +435,6 @@ impl BlockchainService {
                 address: trimmed_input.to_string(),
                 resolved_address: eth_address,
                 address_type: "Ethereum Address".to_string(),
-                is_valid: true,
             });
         }
         
@@ -408,7 +446,6 @@ impl BlockchainService {
                         address: trimmed_input.to_string(),
                         resolved_address,
                         address_type: "ENS Name (resolved)".to_string(),
-                        is_valid: true,
                     });
                 }
                 Err(e) => {
@@ -445,7 +482,6 @@ impl BlockchainService {
                             address: account.address.clone(),
                             resolved_address: addr,
                             address_type: format!("Known Account ({})", name),
-                            is_valid: true,
                         });
                     }
                 }

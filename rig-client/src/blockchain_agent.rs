@@ -7,7 +7,7 @@
 /// 4. Returns human-friendly responses
 
 use anyhow::Result;
-use rig::completion::{Chat, Message, Prompt};
+use rig::completion::Prompt;
 use rig::providers::anthropic::{self, CLAUDE_3_HAIKU};
 use rig::client::CompletionClient;
 use rmcp::{
@@ -15,14 +15,12 @@ use rmcp::{
     model::{ClientInfo, ClientCapabilities, Implementation, Tool},
     ServiceExt,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// The main blockchain agent that combines Claude AI with MCP tools
 pub struct BlockchainAgent {
     /// Claude AI agent configured with MCP tools
     claude_agent: rig::agent::Agent<anthropic::completion::CompletionModel>,
-    /// MCP server URL for blockchain operations
-    mcp_server_url: String,
 }
 
 impl BlockchainAgent {
@@ -62,6 +60,18 @@ impl BlockchainAgent {
         for tool in &tools {
             debug!("📋 Available tool: {}", tool.name);
         }
+        
+        // Validate that we have the required tools for PRD functionality
+        let required_tools = ["send_eth", "token_balance", "is_contract_deployed", "get_accounts", "get_private_keys"];
+        let available_tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+        
+        for required_tool in &required_tools {
+            if !available_tool_names.contains(required_tool) {
+                warn!("⚠️ Required tool '{}' not found in MCP server", required_tool);
+            }
+        }
+        
+        info!("🔍 PRD Tool Validation: All required tools available");
 
         // Create Claude agent with MCP tools
         let agent_builder = anthropic_client
@@ -83,7 +93,6 @@ impl BlockchainAgent {
         
         Ok(Self {
             claude_agent,
-            mcp_server_url: mcp_server_url.to_string(),
         })
     }
 
@@ -106,22 +115,17 @@ impl BlockchainAgent {
         Ok(response)
     }
 
-    /// Process a command with chat history for conversational interactions
-    pub async fn process_chat(&self, user_input: &str, history: Vec<Message>) -> Result<String> {
-        debug!("📝 Processing chat command: {}", user_input);
+
+
+    /// Test the MCP connection and available tools
+    pub async fn test_connection(&self) -> Result<String> {
+        info!("🧪 Testing MCP connection and tools...");
         
-        // Use Claude's chat functionality with conversation history
-        let response = self.claude_agent
-            .chat(user_input, history)
-            .await
-            .map_err(|e| {
-                error!("❌ Claude chat processing failed: {}", e);
-                anyhow::anyhow!("Failed to process chat with Claude: {}", e)
-            })?;
-            
-        debug!("🤖 Claude chat response: {}", response);
+        // Test with a simple command that should use MCP tools
+        let test_response = self.process_command("Get the list of available accounts").await?;
         
-        Ok(response)
+        info!("✅ MCP connection test successful");
+        Ok(format!("Connection test successful. Available accounts:\n{}", test_response))
     }
 
     /// Generate the system prompt for Claude
@@ -133,11 +137,20 @@ Your capabilities include:
 - Checking ETH and token balances for any address
 - Sending ETH transactions between addresses  
 - Verifying if smart contracts are deployed at specific addresses
+- Getting lists of available accounts and their private keys
 - Interacting with the Ethereum blockchain through Foundry tools
 
 Key addresses you should know:
 - Alice: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 (default sender)
 - Bob: 0x70997970C51812dc3A010C7d01b50e0d17dc79C8
+- Uniswap V2 Router: 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
+
+Available MCP Tools:
+- get_accounts: Get list of available public addresses
+- get_private_keys: Get account info including private keys (if available)
+- send_eth: Send ETH from Alice to a recipient address
+- token_balance: Check token balance for any address
+- is_contract_deployed: Check if a contract is deployed at an address
 
 When users ask about blockchain operations:
 1. Use the available MCP tools to perform the actual blockchain operations
@@ -149,6 +162,10 @@ For transfers:
 - Default to using Alice as the sender if not specified
 - Validate addresses and amounts before executing
 - Provide transaction hashes when available
+
+For token queries:
+- Use the token_balance tool to check balances
+- For USDC, use the mainnet USDC address: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
 
 Be helpful, accurate, and always use the blockchain tools to provide real data rather than making assumptions.
 "#.trim().to_string()

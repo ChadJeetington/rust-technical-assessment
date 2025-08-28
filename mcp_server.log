@@ -1,0 +1,30 @@
+   Compiling foundry-compilers v0.19.0
+   Compiling foundry-block-explorers v0.21.0
+   Compiling foundry-linking v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/linking)
+   Compiling foundry-config v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/config)
+   Compiling foundry-common v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/common)
+   Compiling foundry-wallets v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/wallets)
+   Compiling forge-fmt v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/fmt)
+   Compiling foundry-evm-core v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/evm/core)
+   Compiling forge-script-sequence v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/script-sequence)
+   Compiling foundry-evm-traces v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/evm/traces)
+   Compiling foundry-evm-coverage v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/evm/coverage)
+   Compiling foundry-evm-fuzz v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/evm/fuzz)
+   Compiling foundry-debugger v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/debugger)
+   Compiling foundry-cheatcodes v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/cheatcodes)
+   Compiling foundry-evm v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/evm/evm)
+   Compiling foundry-cli v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/cli)
+   Compiling cast v1.3.2 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/foundry/crates/cast)
+   Compiling mcp-server v0.1.0 (/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/rust-technical-assessment/mcp-server)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 48.29s
+     Running `/Users/trentoncreamer/Crypto/AI Projects/Aomi_Labs/rust-technical-assessment/target/debug/mcp-server`
+2025-08-28T18:57:05.707364Z  INFO mcp_server: 🚀 Starting MCP Blockchain Server
+2025-08-28T18:57:05.707573Z  INFO mcp_server: 🌐 HTTP Server listening on http://127.0.0.1:8080
+2025-08-28T18:57:05.707583Z  INFO mcp_server: 📡 Connecting to anvil network at 127.0.0.1:8545
+2025-08-28T18:57:05.708139Z  INFO mcp_server::blockchain_service: Loaded environment variables from .env file
+2025-08-28T18:57:05.719788Z  INFO mcp_server::blockchain_service: 🔗 Blockchain service configured for anvil network at http://127.0.0.1:8545
+2025-08-28T18:57:05.719838Z  INFO mcp_server::blockchain_service: 👤 Alice address: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+2025-08-28T18:57:05.719924Z  INFO mcp_server::blockchain_service: 📊 Dynamically loaded 10 accounts from anvil
+2025-08-28T18:57:05.719932Z  INFO mcp_server::blockchain_service: 🔑 Private key loaded from environment for transaction signing
+2025-08-28T18:57:05.721147Z  INFO mcp_server: ✅ MCP Blockchain Server ready on port 8080 - exposing balance, transfer, and is_contract_deployed tools
+2025-08-28T18:57:05.721168Z  INFO mcp_server: 🔗 RIG clients can connect to: http://127.0.0.1:8080/mcp

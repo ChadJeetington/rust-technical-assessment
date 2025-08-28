@@ -77,10 +77,10 @@ async fn start_repl(agent: BlockchainAgent) -> Result<()> {
     let mut rl = DefaultEditor::new()?;
     
     println!("\n🔥 Ethereum AI Agent Ready!");
-    println!("💡 Try these commands:");
+    println!("💡 Try these PRD commands:");
     println!("   • send 1 ETH from Alice to Bob");
-    println!("   • How much ETH does Alice have?");
-    println!("   • Is Uniswap V2 Router deployed?");
+    println!("   • How much USDC does Alice have?");
+    println!("   • Is Uniswap V2 Router (0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D) deployed?");
     println!("   • Type 'quit' or 'exit' to stop\n");
 
     loop {
@@ -104,6 +104,20 @@ async fn start_repl(agent: BlockchainAgent) -> Result<()> {
                 // Handle help
                 if matches!(input.to_lowercase().as_str(), "help" | "h") {
                     print_help();
+                    continue;
+                }
+                
+                // Handle test command
+                if matches!(input.to_lowercase().as_str(), "test" | "test-connection") {
+                    match agent.test_connection().await {
+                        Ok(result) => {
+                            println!("🧪 {}\n", result);
+                        }
+                        Err(e) => {
+                            error!("❌ Connection test failed: {}", e);
+                            println!("❌ Connection test failed: {}\n", e);
+                        }
+                    }
                     continue;
                 }
                 
@@ -138,16 +152,20 @@ async fn start_repl(agent: BlockchainAgent) -> Result<()> {
 
 fn print_help() {
     println!("\n📚 Available Commands:");
-    println!("  Blockchain Operations:");
+    println!("  PRD Required Operations:");
     println!("    • send [amount] ETH from [sender] to [recipient]");
     println!("    • How much [token] does [address] have?");
     println!("    • Is [contract name] deployed?");
+    println!("  \n  Additional Operations:");
+    println!("    • Get list of available accounts");
+    println!("    • Check account private keys");
     println!("  \n  General:");
     println!("    • help, h - Show this help");
+    println!("    • test, test-connection - Test MCP connection");
     println!("    • quit, exit, q - Exit the program");
-    println!("  \n  Examples:");
+    println!("  \n  PRD Examples:");
     println!("    • send 1 ETH from Alice to Bob");
     println!("    • How much USDC does Alice have?");
-    println!("    • Is Uniswap V2 Router deployed?");
+    println!("    • Is Uniswap V2 Router (0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D) deployed?");
     println!();
 }

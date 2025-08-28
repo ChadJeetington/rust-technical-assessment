@@ -1,12 +1,12 @@
-/// **VIBE CODE**: Blockchain MCP Server Implementation
-/// 
-/// This module implements the core blockchain functionality as MCP tools.
-/// Following the PRD example and using Foundry's cast functionality.
-/// 
-/// Tools exposed:
-/// - balance: Get ETH balance of an address (following PRD example on line 34-50)
-/// - transfer: Send ETH between addresses 
-/// - is_contract_deployed: Check if contract code exists at address
+//! Blockchain MCP Server Implementation
+//! 
+//! This module implements the core blockchain functionality as MCP tools.
+//! Following the PRD example and using Foundry's cast functionality.
+//! 
+//! Tools exposed:
+//! - balance: Get ETH balance of an address (following PRD example on line 34-50)
+//! - transfer: Send ETH between addresses 
+//! - is_contract_deployed: Check if contract code exists at address
 
 use std::process::Command;
 

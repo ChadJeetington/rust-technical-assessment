@@ -7,7 +7,7 @@
 
 use anyhow::Result;
 use rig::completion::{Chat, Message, Prompt, ToolDefinition};
-use rig::providers::anthropic::{self, CLAUDE_3_5_SONNET};
+use rig::providers::anthropic::{self, CLAUDE_3_HAIKU};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -220,7 +220,7 @@ impl BlockchainAgent {
         // Note: max_tokens is required for Anthropic API
         // Following official Rig pattern: add tools individually using .tool() method
         let claude_agent = anthropic_client
-            .agent(CLAUDE_3_5_SONNET)
+            .agent(CLAUDE_3_HAIKU)
             .preamble(&Self::get_system_prompt())
             .temperature(0.1) // Low temperature for consistent responses
             .max_tokens(2000) // Increased for more detailed responses

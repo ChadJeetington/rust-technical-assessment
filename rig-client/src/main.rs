@@ -1,12 +1,12 @@
-/// RIG AI Agent Client for Ethereum Blockchain Interaction
-/// 
-/// This client provides a CLI REPL interface that uses Claude API for natural language
-/// processing and connects to an MCP server for blockchain operations.
+//! RIG AI Agent Client for Ethereum Blockchain Interaction
+//! 
+//! This client provides a CLI REPL interface that uses Claude API for natural language
+//! processing and connects to an MCP server for blockchain operations.
 
 use anyhow::Result;
 use clap::Parser;
 use dotenv::dotenv;
-use rig::providers::anthropic;
+use rig::providers::anthropic::Client;
 use rustyline::{error::ReadlineError, DefaultEditor};
 use std::env;
 use tracing::{info, error};
@@ -49,20 +49,22 @@ async fn main() -> Result<()> {
 
     info!("🚀 Starting RIG AI Agent Client");
     
-    // Initialize Claude client with proper configuration
-    let anthropic_client = match env::var("ANTHROPIC_API_KEY") {
-        Ok(api_key) => {
-            anthropic::ClientBuilder::new(&api_key)
-                .anthropic_version(anthropic::ANTHROPIC_VERSION_LATEST)
-                .anthropic_beta("prompt-caching-2024-07-31") // Enable prompt caching
-                .build()
-        },
+    // Initialize Claude client using the working pattern
+    let api_key = match env::var("ANTHROPIC_API_KEY") {
+        Ok(key) => key,
         Err(_) => {
             error!("❌ ANTHROPIC_API_KEY environment variable not set");
             error!("Please set your Claude API key in the .env file");
             return Ok(());
         }
     };
+
+    let anthropic_client = Client::new(
+        &api_key,
+        "https://api.anthropic.com",
+        None,
+        "2023-06-01"
+    );
 
     // Create blockchain agent with Claude
     let agent = BlockchainAgent::new(anthropic_client, &args.mcp_server).await?;

@@ -7,7 +7,7 @@
 
 use anyhow::Result;
 use rig::completion::Prompt;
-use rig::providers::anthropic::{self, CLAUDE_3_5_SONNET};
+use rig::providers::anthropic::{self};
 use serde_json::json;
 use tracing::{debug, info};
 

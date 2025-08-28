@@ -18,14 +18,53 @@ You are helping build an AI agent system for Ethereum blockchain interaction usi
 - **AI-assisted development strongly encouraged** ("vibe coding")
 - Generate as much code as possible using AI
 - Focus on fast iterations and prototyping
+- **Follow modern Rust best practices and idioms**
 - Implement proper Rust error handling with Result<T, E>
 - Use async/await for all blockchain operations
 
-## Code Patterns
+## Modern Rust Best Practices (Required - 2024 Standards)
+4- **Edition 2024**: Use Rust Edition 2024 in Cargo.toml (latest available)
+- **Rust 1.85**: Use Rust 1.85+ with pinned toolchain via rust-toolchain.toml
+- **Workspace Resolver**: Use resolver = "2" for modern dependency resolution
+- **Advanced Formatting**: Use nightly rustfmt with group_imports, imports_granularity
+- **Strict Clippy**: Use `-D warnings` flag, configure clippy.toml with MSRV
+- **Error Handling**: Use `Result<T, E>` and `?` operator, avoid `.unwrap()`, use `thiserror` for structured errors
+- **Ownership**: Prefer borrowing over cloning, use `&str` over `String` when possible
+- **Async/Await**: Use `async`/`await` consistently with `tokio` runtime, avoid blocking operations
+- **Type Safety**: Leverage Rust's type system, use `Option<T>` appropriately, const generics where beneficial
+- **Performance**: Minimize heap allocations, prefer stack allocation, use zero-cost abstractions
+- **Code Coverage**: Use `cargo llvm-cov` for comprehensive coverage reporting
+- **Documentation**: Add `///` doc comments for all public APIs with examples
+- **Testing**: Write comprehensive unit tests with `#[cfg(test)]` modules and integration tests
+- **Benchmarking**: Use `criterion` crate for performance benchmarks where applicable
+- **Dependency Management**: Pin versions in Cargo.toml, use minimal well-maintained dependencies
+- **Pattern Matching**: Use `match` and `if let` idiomatically, leverage exhaustive matching
+- **Traits**: Implement standard traits (Debug, Clone, etc.), use trait objects appropriately
+- **Modules**: Organize code into logical modules with proper visibility and clear boundaries
+- **Concurrency**: Use `tokio` for async, `rayon` for CPU-bound parallelism when beneficial
+- **Development Workflow**: Use justfile or Makefile for automated fmt/clippy/test workflows
+
+## Performance Requirements (Critical for Employer)
+- **Release Profile**: Configure Cargo.toml with LTO, opt-level=3, codegen-units=1
+- **Memory Efficiency**: Use appropriate data structures (Vec vs HashMap vs BTreeMap)
+- **Zero-Cost Abstractions**: Leverage iterators, closures, and generic programming
+- **Async Performance**: Use `tokio` efficiently, avoid unnecessary .await points
+- **Profiling**: Use `flamegraph` and `perf` for performance analysis when needed
+- **Custom Allocators**: Consider `mimalloc` for memory-intensive operations
+- **SIMD**: Use SIMD operations where applicable for data processing
+
+## Code Patterns (Modern 2024)
 - MCP tools use `#[tool]` macro with descriptive parameters
 - Blockchain operations should resolve ENS names and validate addresses
 - Return `CallToolResult::success()` for MCP tool responses
 - Structure code for easy testing against forked network
+- Use `thiserror` for structured error handling (not `anyhow` for libraries)
+- Implement `From` traits for error conversions and type conversions
+- Use `tokio` runtime for async operations with proper task spawning
+- Use `#[derive(Debug, Clone)]` and other standard derives appropriately
+- Implement `Display` trait for user-facing error messages
+- Use `Arc` and `Mutex`/`RwLock` for shared state in concurrent contexts
+- Leverage `const fn` where possible for compile-time computation
 
 ## Priority Features
 1. Basic ETH transfers between accounts
@@ -33,4 +72,4 @@ You are helping build an AI agent system for Ethereum blockchain interaction usi
 3. Contract deployment checks
 4. Natural language parsing for blockchain commands
 
-Generate idiomatic Rust code that follows these patterns and prioritizes functionality over perfection.
+Generate idiomatic Rust code that follows modern best practices, passes clippy checks, and prioritizes maintainability alongside functionality.

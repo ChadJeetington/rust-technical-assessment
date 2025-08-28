@@ -80,7 +80,7 @@ impl BlockchainAgent {
             .agent(CLAUDE_3_HAIKU)
             .preamble(&Self::get_system_prompt())
             .temperature(0.1) // Low temperature for consistent responses
-            .max_tokens(2000); // Increased for more detailed responses
+            .max_tokens(4096); // Maximum allowed for Claude 3 Haiku
         
         // Add each MCP tool to the agent using fold pattern - following rmcp.rs example
         let claude_agent = tools
@@ -160,11 +160,18 @@ When users ask about blockchain operations:
 2. Provide clear, informative responses about what was done
 3. Include relevant transaction details when applicable
 4. If an operation fails, explain what went wrong and suggest alternatives
+5. NEVER truncate or summarize MCP tool responses - always provide the complete information
+6. When a transaction is successful, include the FULL transaction hash and all details
+7. IMPORTANT: When you receive a tool response, include the COMPLETE response text in your final answer
+8. Do not say "the transaction hash is provided above" - actually include the hash in your response
+9. CRITICAL: Copy and paste the exact tool response text into your final answer - do not paraphrase or summarize
+10. For successful transactions, your response should start with the complete tool response, then add any additional explanation
 
 For transfers:
 - Default to using Alice as the sender if not specified
 - Validate addresses and amounts before executing
-- Provide transaction hashes when available
+- ALWAYS include the complete transaction hash in your response when a transfer is successful
+- Do not summarize or omit transaction details - provide the full information from the MCP tool response
 
 For token queries:
 - Use the token_balance tool to check balances

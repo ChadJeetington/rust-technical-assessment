@@ -204,6 +204,7 @@ impl BlockchainService {
         &self,
         Parameters(TransferRequest { to, amount }): Parameters<TransferRequest>,
     ) -> Result<CallToolResult, McpError> {
+        info!("🚀 MCP Server: send_eth called with to={}, amount={}", to, amount);
         // Step 1: Validate recipient address (PRD requirement)
         let validated_recipient = self.validate_recipient_address(&to).await?;
         
@@ -246,7 +247,7 @@ impl BlockchainService {
         let pending_tx = cast.send(tx).await.unwrap();
         let tx_hash = *pending_tx.tx_hash();
         
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        let response_text = format!(
             "ETH Transfer Successful:\n\
             From: {} (Alice)\n\
             To: {} ({})\n\
@@ -258,7 +259,12 @@ impl BlockchainService {
             validated_recipient.address_type,
             amount,
             tx_hash
-        ))]))
+        );
+        
+        info!("🔍 MCP Server send_eth response: {}", response_text);
+        info!("📝 Transaction hash: {}", tx_hash);
+        
+        Ok(CallToolResult::success(vec![Content::text(response_text)]))
     }
 
     /// Check if a contract is deployed using Cast::code

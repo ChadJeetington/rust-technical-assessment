@@ -24,7 +24,7 @@ struct Args {
     verbose: bool,
     
     /// MCP server URL (default: local)
-    #[arg(long, default_value = "http://127.0.0.1:3000")]
+    #[arg(long, default_value = "http://127.0.0.1:8080/mcp")]
     mcp_server: String,
 }
 
@@ -59,12 +59,7 @@ async fn main() -> Result<()> {
         }
     };
 
-    let anthropic_client = Client::new(
-        &api_key,
-        "https://api.anthropic.com",
-        None,
-        "2023-06-01"
-    );
+    let anthropic_client = Client::new(&api_key);
 
     // Create blockchain agent with Claude
     let agent = BlockchainAgent::new(anthropic_client, &args.mcp_server).await?;

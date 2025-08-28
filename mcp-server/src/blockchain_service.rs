@@ -46,11 +46,11 @@ pub struct ContractDeploymentRequest {
     pub address: String,
 }
 
-/// Blockchain MCP Server
+/// Blockchain MCP Service
 /// 
 /// Exposes Foundry functionality as MCP tools, connecting to anvil at 127.0.0.1:8545
 #[derive(Clone)]
-pub struct BlockchainServer {
+pub struct BlockchainService {
     /// RPC URL for the anvil network
     rpc_url: String,
     /// Alice's address (account 0 from PRD)
@@ -62,24 +62,24 @@ pub struct BlockchainServer {
 }
 
 #[tool_router]
-impl BlockchainServer {
-    /// Create a new blockchain server instance
-    pub async fn new() -> Result<Self> {
+impl BlockchainService {
+    /// Create a new blockchain service instance
+    pub fn new() -> Self {
         let rpc_url = "http://127.0.0.1:8545".to_string();
         
         // Alice's address and private key from PRD (account 0)
         let alice_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".to_string();
         let alice_private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80".to_string();
 
-        info!("🔗 Blockchain server configured for anvil network");
+        info!("🔗 Blockchain service configured for anvil network");
         info!("👤 Alice address: {}", alice_address);
 
-        Ok(Self {
+        Self {
             rpc_url,
             alice_address,
             alice_private_key,
             tool_router: Self::tool_router(),
-        })
+        }
     }
 
     /// Get the balance of an account using cast balance
@@ -220,7 +220,7 @@ impl BlockchainServer {
 
 /// Implement the MCP ServerHandler trait
 #[tool_handler]
-impl ServerHandler for BlockchainServer {
+impl ServerHandler for BlockchainService {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some(

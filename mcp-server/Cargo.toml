@@ -9,11 +9,15 @@ rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk.git", features 
     "server",
     "macros", 
     "transport-io",
+    "transport-worker",
+    "transport-streamable-http-server",
     "schemars"
 ] }
 
 # Async runtime
 tokio = { version = "1.0", features = ["full"] }
+# Web framework for HTTP transport
+axum = "0.8"
 
 # Error handling
 anyhow.workspace = true

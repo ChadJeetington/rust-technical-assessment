@@ -8,11 +8,13 @@
 //! Connects to anvil network at 127.0.0.1:8545 as specified in PRD
 
 use anyhow::Result;
-use rmcp::{ServiceExt, transport::stdio};
+use rmcp::transport::streamable_http_server::{
+    StreamableHttpService, session::local::LocalSessionManager,
+};
 use tracing_subscriber::{self, EnvFilter};
 
-mod blockchain_server;
-use blockchain_server::BlockchainServer;
+mod blockchain_service;
+use blockchain_service::BlockchainService;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -23,21 +25,33 @@ async fn main() -> Result<()> {
         .with_ansi(false)
         .init();
 
+    let port = 8080;
+    let host = "127.0.0.1";
+    
     tracing::info!("🚀 Starting MCP Blockchain Server");
+    tracing::info!("🌐 HTTP Server listening on http://{}:{}", host, port);
     tracing::info!("📡 Connecting to anvil network at 127.0.0.1:8545");
 
-    // Create and start the blockchain server following PRD requirements
-    let service = BlockchainServer::new()
-        .await?
-        .serve(stdio())
-        .await
-        .inspect_err(|e| {
-            tracing::error!("❌ MCP server error: {:?}", e);
-        })?;
+    // Create StreamableHttpService following the working example pattern
+    let service = StreamableHttpService::new(
+        || Ok(BlockchainService::new()),
+        LocalSessionManager::default().into(),
+        Default::default(),
+    );
 
-    tracing::info!("✅ MCP Blockchain Server ready - exposing balance, transfer, and is_contract_deployed tools");
+    // Create axum router with MCP service
+    let router = axum::Router::new().nest_service("/mcp", service);
+    let tcp_listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
+    
+    tracing::info!("✅ MCP Blockchain Server ready on port {} - exposing balance, transfer, and is_contract_deployed tools", port);
+    tracing::info!("🔗 RIG clients can connect to: http://{}:{}/mcp", host, port);
 
-    // Wait for the service to complete
-    service.waiting().await?;
+    // Start the axum server with graceful shutdown
+    axum::serve(tcp_listener, router)
+        .with_graceful_shutdown(async {
+            tokio::signal::ctrl_c().await.unwrap();
+            tracing::info!("🛑 MCP server shutting down...");
+        })
+        .await?;
     Ok(())
 }

@@ -1,0 +1,36 @@
+# Rust Technical Assessment - AI Agent System
+
+You are helping build an AI agent system for Ethereum blockchain interaction using Rust.
+
+## Project Stack
+- **Client**: RIG framework with CLI REPL + Claude API
+- **Server**: Anthropic Rust SDK for MCP server
+- **Blockchain**: Foundry (cast commands) + forked Ethereum testnet
+- **Language**: Rust with async/await patterns
+
+## Key Context
+- Test network: anvil fork at 127.0.0.1:8545
+- Default sender: Alice (0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266)
+- Bob: 0x70997970C51812dc3A010C7d01b50e0d17dc79C8
+- Must handle natural language commands like "send 1 ETH from Alice to Bob"
+
+## Development Approach
+- **AI-assisted development strongly encouraged** ("vibe coding")
+- Generate as much code as possible using AI
+- Focus on fast iterations and prototyping
+- Implement proper Rust error handling with Result<T, E>
+- Use async/await for all blockchain operations
+
+## Code Patterns
+- MCP tools use `#[tool]` macro with descriptive parameters
+- Blockchain operations should resolve ENS names and validate addresses
+- Return `CallToolResult::success()` for MCP tool responses
+- Structure code for easy testing against forked network
+
+## Priority Features
+1. Basic ETH transfers between accounts
+2. Balance queries (ETH and ERC20 tokens)
+3. Contract deployment checks
+4. Natural language parsing for blockchain commands
+
+Generate idiomatic Rust code that follows these patterns and prioritizes functionality over perfection.

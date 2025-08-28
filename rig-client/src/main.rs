@@ -49,9 +49,14 @@ async fn main() -> Result<()> {
 
     info!("🚀 Starting RIG AI Agent Client");
     
-    // Initialize Claude client
+    // Initialize Claude client with proper configuration
     let anthropic_client = match env::var("ANTHROPIC_API_KEY") {
-        Ok(_) => anthropic::Client::from_env(),
+        Ok(api_key) => {
+            anthropic::ClientBuilder::new(&api_key)
+                .anthropic_version(anthropic::ANTHROPIC_VERSION_LATEST)
+                .anthropic_beta("prompt-caching-2024-07-31") // Enable prompt caching
+                .build()
+        },
         Err(_) => {
             error!("❌ ANTHROPIC_API_KEY environment variable not set");
             error!("Please set your Claude API key in the .env file");

@@ -107,6 +107,7 @@ impl BlockchainAgent {
         // Claude will automatically call the appropriate MCP tools based on the user's request
         let response = self.claude_agent
             .prompt(user_input)
+            .multi_turn(5) // Allow up to 5 tool call rounds for complex operations
             .await
             .map_err(|e| {
                 error!("❌ Claude processing failed: {}", e);

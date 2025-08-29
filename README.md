@@ -97,6 +97,30 @@ The system handles sophisticated natural language commands:
 | **Interface** | CLI REPL | User interaction |
 | **Network** | Forked Ethereum Mainnet | Safe testing environment |
 
+## 🧪 Testing
+
+This project includes comprehensive testing across multiple layers:
+
+### Test Organization
+- **Unit Tests**: Inline with source code using `#[cfg(test)]` modules
+- **Integration Tests**: Rust files in `scripts/tests/` for complete workflows
+- **End-to-End Tests**: Shell scripts in `scripts/tests/` for full system validation
+
+### Running Tests
+```bash
+# Run all tests
+./scripts/tests/run_all.sh
+
+# Run Rust tests only
+cargo test
+
+# Run specific test categories
+cargo run --bin test_usdc_direct --manifest-path scripts/tests/Cargo.toml  # Integration tests
+./scripts/tests/test_complete_system.sh  # End-to-end tests
+```
+
+For detailed testing information, see [TESTING.md](./TESTING.md).
+
 ## 🔧 Development Environment
 
 ### Test Network Configuration

@@ -117,7 +117,10 @@ async fn start_repl(agent: BlockchainAgent) -> Result<()> {
     
     println!("\n🔥 Ethereum AI Agent Ready!");
     println!("💡 Try these PRD commands:");
+    println!("   • Identify sender and recipient");
+    println!("   • Validate recipient address");
     println!("   • send 1 ETH from Alice to Bob");
+    println!("   • send 0.5 ETH to Bob");
     println!("   • How much USDC does Alice have?");
     println!("   • Is Uniswap V2 Router (0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D) deployed?");
     println!("   • Type 'quit' or 'exit' to stop\n");
@@ -195,9 +198,11 @@ fn print_help() {
     println!("\n📚 Available Commands:");
     println!("  PRD Required Operations:");
     println!("    • send [amount] ETH from [sender] to [recipient]");
+    println!("    • send [amount] ETH to [recipient] (Alice is default sender)");
     println!("    • How much [token] does [address] have?");
     println!("    • Is [contract name] deployed?");
     println!("  \n  Additional Operations:");
+    println!("    • Get default addresses (Alice/Bob configuration)");
     println!("    • Get list of available accounts");
     println!("    • Check account private keys");
     println!("  \n  General:");
@@ -206,7 +211,11 @@ fn print_help() {
     println!("    • quit, exit, q - Exit the program");
     println!("  \n  PRD Examples:");
     println!("    • send 1 ETH from Alice to Bob");
+    println!("    • send 0.5 ETH to Bob (Alice is default sender)");
     println!("    • How much USDC does Alice have?");
     println!("    • Is Uniswap V2 Router (0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D) deployed?");
+    println!("  \n  Default Addresses (PRD):");
+    println!("    • Alice: Account 0 from anvil (Default Sender)");
+    println!("    • Bob: Account 1 from anvil (Default Recipient)");
     println!();
 }

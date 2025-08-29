@@ -95,8 +95,10 @@ pub struct ValidatedAddress {
 pub struct BlockchainService {
     /// Provider for blockchain connection (we'll create Cast on-demand)
     provider: RootProvider<AnyNetwork>,
-    /// Alice's address (account 0 from PRD)
+    /// Alice's address (default sender from PRD)
     alice_address: Address,
+    /// Bob's address (default recipient from PRD)
+    bob_address: Address,
     /// Alice's private key for transactions
     alice_private_key: String,
     /// All available anvil accounts (addresses and private keys)
@@ -116,11 +118,11 @@ impl BlockchainService {
             info!("Loaded environment variables from .env file");
         }
         
-        let rpc_url = "http://127.0.0.1:8545";
+        let rpc_url = env::var("ANVIL_RPC_URL").unwrap_or_else(|_| "http://127.0.0.1:8545".to_string());
         
         // Create provider connection to anvil
         let provider = ProviderBuilder::<_, _, AnyNetwork>::default()
-            .connect(rpc_url)
+            .connect(&rpc_url)
             .await?;
 
         // Dynamically get all accounts from the anvil node
@@ -131,9 +133,16 @@ impl BlockchainService {
             return Err(eyre::eyre!("No accounts available from anvil node"));
         }
 
-        // Alice's address (account 0 from PRD) - just use the first available account
-        let alice_address = available_addresses[0];
+        // PRD requirement: Default sender is account 0 (first account from anvil)
+        let alice_address = available_addresses[0]; // Account 0 - default sender
         
+        // PRD requirement: Bob is account 1 (second account from anvil)
+        let bob_address = if available_addresses.len() > 1 {
+            available_addresses[1] // Account 1 - default recipient
+        } else {
+            return Err(eyre::eyre!("Need at least 2 accounts from anvil for Alice and Bob"));
+        };
+
         // Load accounts dynamically - addresses only, no private keys from RPC
         let anvil_accounts = Self::load_anvil_accounts(&available_addresses).await?;
         
@@ -147,17 +156,19 @@ impl BlockchainService {
             });
 
         info!("🔗 Blockchain service configured for anvil network at {}", rpc_url);
-        info!("👤 Alice address: {}", alice_address);
-        info!("📊 Dynamically loaded {} accounts from anvil", anvil_accounts.len());
+        info!("👤 Alice (Account 0): {} (default sender per PRD)", alice_address);
+        info!("👤 Bob (Account 1): {} (default recipient per PRD)", bob_address);
+        info!("📊 Loaded {} accounts from anvil", anvil_accounts.len());
         if !alice_private_key.is_empty() {
-            info!("🔑 Private key loaded from environment for transaction signing");
+            info!("🔑 Alice's private key loaded for transaction signing");
         } else {
-            info!("⚠️  No private key available - transactions will be disabled");
+            info!("⚠️  Alice's private key not available - transactions disabled");
         }
 
         Ok(Self {
             provider,
             alice_address,
+            bob_address,
             alice_private_key,
             anvil_accounts,
             tool_router: Self::tool_router(),
@@ -474,9 +485,27 @@ impl BlockchainService {
         }
         
         // Step 3: Check if it's a known account name (Alice, Bob, etc.)
+        let lowercase_input = trimmed_input.to_lowercase();
+        
+        // Handle Alice and Bob specifically (PRD requirement)
+        if lowercase_input == "alice" {
+            return Ok(ValidatedAddress {
+                address: format!("{:?}", self.alice_address),
+                resolved_address: self.alice_address,
+                address_type: "Alice (Account 0 - Default Sender)".to_string(),
+            });
+        }
+        
+        if lowercase_input == "bob" {
+            return Ok(ValidatedAddress {
+                address: format!("{:?}", self.bob_address),
+                resolved_address: self.bob_address,
+                address_type: "Bob (Account 1 - Default Recipient)".to_string(),
+            });
+        }
+        
+        // Handle numbered accounts
         let known_accounts = [
-            ("alice", 0),
-            ("bob", 1),
             ("account0", 0),
             ("account1", 1),
             ("account2", 2),
@@ -489,7 +518,6 @@ impl BlockchainService {
             ("account9", 9),
         ];
         
-        let lowercase_input = trimmed_input.to_lowercase();
         for (name, index) in known_accounts.iter() {
             if lowercase_input == *name {
                 if let Some(account) = self.anvil_accounts.get(*index) {
@@ -497,7 +525,7 @@ impl BlockchainService {
                         return Ok(ValidatedAddress {
                             address: account.address.clone(),
                             resolved_address: addr,
-                            address_type: format!("Known Account ({})", name),
+                            address_type: format!("Anvil Account {}", index),
                         });
                     }
                 }
@@ -572,6 +600,42 @@ impl BlockchainService {
         );
         
         Ok(CallToolResult::success(vec![Content::text(format!("{}{}", json_response, explanation))]))
+    }
+
+    /// Get default addresses as specified in PRD
+    #[tool(description = "Get the default sender and recipient addresses as specified in PRD")]
+    async fn get_default_addresses(&self) -> Result<CallToolResult, McpError> {
+        let response = format!(
+            "Default Addresses (PRD Configuration):\n\n\
+            👤 Alice (Account 0 - Default Sender):\n\
+            Address: {}\n\
+            Private Key: {}\n\
+            Status: {}\n\n\
+            👤 Bob (Account 1 - Default Recipient):\n\
+            Address: {}\n\
+            Private Key: Not available (for security)\n\n\
+            📋 Usage:\n\
+            • Alice (Account 0) is the default sender for all transactions\n\
+            • Bob (Account 1) is the default recipient when not specified\n\
+            • Addresses are dynamically loaded from anvil (PRD requirement)\n\
+            • Alice's private key must be set in environment for transactions\n\n\
+            🔧 Configuration:\n\
+            • Alice: Account 0 from anvil (default sender)\n\
+            • Bob: Account 1 from anvil (default recipient)\n\
+            • ALICE_PRIVATE_KEY: [set in .env file]\n\n\
+            💡 Example Commands:\n\
+            • \"send 1 ETH from Alice to Bob\"\n\
+            • \"send 0.5 ETH to Bob\" (Alice is default sender)\n\
+            • \"How much ETH does Alice have?\"\n\n\
+            📊 Anvil Accounts Loaded: {}",
+            self.alice_address,
+            if self.alice_private_key.is_empty() { "NOT SET" } else { "SET" },
+            if self.alice_private_key.is_empty() { "❌ Transactions disabled" } else { "✅ Transactions enabled" },
+            self.bob_address,
+            self.anvil_accounts.len()
+        );
+        
+        Ok(CallToolResult::success(vec![Content::text(response)]))
     }
 }
 

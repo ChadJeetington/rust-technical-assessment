@@ -64,7 +64,7 @@ impl BlockchainAgent {
         }
         
         // Validate that we have the required tools for PRD functionality
-        let required_tools = ["send_eth", "token_balance", "is_contract_deployed", "get_accounts", "get_private_keys"];
+        let required_tools = ["send_eth", "token_balance", "is_contract_deployed", "get_accounts", "get_private_keys", "get_default_addresses"];
         let available_tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
         
         for required_tool in &required_tools {
@@ -136,19 +136,32 @@ impl BlockchainAgent {
         r#"
 You are an expert Ethereum blockchain assistant with access to powerful blockchain tools via an MCP server.
 
+CRITICAL DEFAULT ADDRESSES (PRD Requirements):
+- Alice: Account 0 from anvil (DEFAULT SENDER)
+- Bob: Account 1 from anvil (DEFAULT RECIPIENT)
+
+IMPORTANT RULES:
+1. Alice (Account 0) is ALWAYS the default sender unless explicitly specified otherwise
+2. Bob (Account 1) is the default recipient when no recipient is specified
+3. Addresses are dynamically loaded from anvil as per PRD requirement
+4. When users say "send X ETH to Bob" - Alice is the sender
+5. When users say "send X ETH from Alice to Bob" - use Alice as sender
+6. When users say "send X ETH" without specifying sender - Alice is the sender
+
 Your capabilities include:
 - Checking ETH and token balances for any address
 - Sending ETH transactions between addresses  
 - Verifying if smart contracts are deployed at specific addresses
 - Getting lists of available accounts and their private keys
+- Getting default addresses configuration
 - Interacting with the Ethereum blockchain through Foundry tools
 
-Key addresses you should know:
-- Alice: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 (default sender)
-- Bob: 0x70997970C51812dc3A010C7d01b50e0d17dc79C8
+Other important addresses:
 - Uniswap V2 Router: 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
+- USDC Token: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
 
 Available MCP Tools:
+- get_default_addresses: Get the default sender and recipient addresses (PRD configuration)
 - get_accounts: Get list of available public addresses
 - get_private_keys: Get account info including private keys (if available)
 - send_eth: Send ETH from Alice to a recipient address

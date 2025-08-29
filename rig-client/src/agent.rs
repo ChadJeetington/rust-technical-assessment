@@ -15,6 +15,7 @@ use rmcp::{
     ServiceExt, RoleClient,
 };
 use tracing::{debug, error, info, warn};
+use crate::rag::UniswapRagSystem;
 
 /// The main blockchain agent that combines Claude AI with MCP tools
 pub struct BlockchainAgent {
@@ -22,6 +23,8 @@ pub struct BlockchainAgent {
     claude_agent: rig::agent::Agent<anthropic::completion::CompletionModel>,
     /// MCP client that must be kept alive for the connection
     _mcp_client: rmcp::service::RunningService<RoleClient, rmcp::model::InitializeRequestParam>,
+    /// RAG system for Uniswap documentation and contracts
+    rag_system: Option<UniswapRagSystem>,
 }
 
 impl BlockchainAgent {
@@ -95,6 +98,7 @@ impl BlockchainAgent {
         Ok(Self {
             claude_agent,
             _mcp_client: mcp_client,
+            rag_system: None,
         })
     }
 
@@ -129,10 +133,50 @@ impl BlockchainAgent {
         Ok(format!("Connection test successful. Available accounts:\n{}", test_response))
     }
 
+    /// Initialize the RAG system with Uniswap documentation
+    pub async fn initialize_rag_system(&mut self, docs_path: Option<&str>) -> crate::Result<()> {
+        info!("🔧 Initializing RAG system for Uniswap documentation");
+        
+        let mut rag_system = UniswapRagSystem::new().await?;
+        
+        // Try to load documentation from the specified path
+        if let Some(path) = docs_path {
+            let docs_path = std::path::Path::new(path);
+            rag_system.load_documentation(docs_path).await?;
+        }
+        
+        // If no external docs loaded, add sample documentation
+        if rag_system.document_count() == 0 {
+            info!("📚 No external documentation found, adding sample Uniswap docs");
+            rag_system.add_sample_documentation().await?;
+        }
+        
+        self.rag_system = Some(rag_system);
+        info!("✅ RAG system initialized with {} documents", self.rag_system.as_ref().unwrap().document_count());
+        
+        Ok(())
+    }
+
+    /// Search for relevant Uniswap documentation
+    pub async fn search_documentation(&self, query: &str, limit: usize) -> crate::Result<Vec<(f64, String, crate::rag::UniswapDocument)>> {
+        if let Some(rag_system) = &self.rag_system {
+            rag_system.search(query, limit).await
+        } else {
+            Err(crate::ClientError::RagError("RAG system not initialized".to_string()))
+        }
+    }
+
+    /// Get RAG system status
+    pub fn rag_status(&self) -> Option<String> {
+        self.rag_system.as_ref().map(|rag| {
+            format!("RAG System: {} documents indexed", rag.document_count())
+        })
+    }
+
     /// Generate the system prompt for Claude
     fn get_system_prompt() -> String {
         r#"
-You are an expert Ethereum blockchain assistant with access to powerful blockchain tools via an MCP server.
+You are an expert Ethereum blockchain assistant with access to powerful blockchain tools via an MCP server and a comprehensive RAG system for Uniswap documentation.
 
 CRITICAL DEFAULT ADDRESSES (PRD Requirements):
 - Alice: Account 0 from anvil (DEFAULT SENDER)
@@ -153,6 +197,7 @@ Your capabilities include:
 - Getting lists of available accounts and their private keys
 - Getting default addresses configuration
 - Interacting with the Ethereum blockchain through Foundry tools
+- **RAG System**: Access to comprehensive Uniswap documentation and contract source code
 
 Other important addresses:
 - Uniswap V2 Router: 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
@@ -165,6 +210,16 @@ Available MCP Tools:
 - send_eth: Send ETH from Alice to a recipient address
 - token_balance: Check token balance for any address
 - is_contract_deployed: Check if a contract is deployed at an address
+
+**RAG SYSTEM CAPABILITIES:**
+You have access to a comprehensive RAG system that includes:
+- Uniswap V2 and V3 documentation
+- Contract source code and interfaces
+- Slippage calculation guides
+- Best practices and examples
+- Function signatures and parameters
+
+When users ask about Uniswap functionality, you can search the documentation and provide detailed, accurate answers based on the actual source code and documentation.
 
 RESPONSE FORMATTING REQUIREMENTS:
 1. Always start your response with a brief summary of what you're doing
@@ -196,6 +251,12 @@ For contract checks:
 - Use the is_contract_deployed tool to verify contract deployment
 - Include both the input address and the resolved address in your response
 - Clearly indicate the deployment status
+
+For Uniswap documentation queries:
+- Search the RAG system for relevant documentation
+- Provide detailed answers based on the actual source code and documentation
+- Include code examples and function signatures when relevant
+- Explain differences between V2 and V3 when applicable
 
 EXAMPLE RESPONSE FORMAT:
 "I'll help you send 1 ETH from Alice to Bob.

@@ -29,13 +29,18 @@ async fn main() -> Result<()> {
     let anthropic_client = Client::new(&api_key);
 
     // Create blockchain agent with Claude
-    let agent = BlockchainAgent::new(anthropic_client, &config.mcp_server).await?;
+    let mut agent = BlockchainAgent::new(anthropic_client, &config.mcp_server).await?;
     
     info!("🤖 Claude AI Agent initialized");
     info!("🔗 Connected to MCP server at: {}", config.mcp_server);
     
+    // Initialize RAG system with sample Uniswap documentation
+    info!("📚 Initializing RAG system with sample Uniswap documentation");
+    agent.initialize_rag_system(None).await?;
+    info!("✅ RAG system initialized successfully");
+    
     // Start CLI REPL
-    let repl = Repl::new(agent);
+    let mut repl = Repl::new(agent);
     repl.run().await?;
     
     Ok(())

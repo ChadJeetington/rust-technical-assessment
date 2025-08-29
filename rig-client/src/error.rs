@@ -28,6 +28,15 @@ pub enum ClientError {
 
     #[error("Anyhow error: {0}")]
     Anyhow(#[from] anyhow::Error),
+
+    #[error("RAG system error: {0}")]
+    RagError(String),
+
+    #[error("Embedding error: {0}")]
+    EmbeddingError(#[from] rig::embeddings::EmbedError),
+
+    #[error("Vector store error: {0}")]
+    VectorStoreError(#[from] rig::vector_store::VectorStoreError),
 }
 
 impl From<rmcp::ErrorData> for ClientError {

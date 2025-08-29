@@ -33,3 +33,7 @@ environment*
 *.log
 test_*.log
 mcp_*.log
+
+# Fastembed cache - automatically generated model files
+.fastembed_cache/
+**/.fastembed_cache/

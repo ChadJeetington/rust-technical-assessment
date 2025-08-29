@@ -7,6 +7,7 @@ pub mod agent;
 pub mod cli;
 pub mod config;
 pub mod error;
+pub mod rag;
 
 pub use agent::BlockchainAgent;
 pub use cli::Repl;

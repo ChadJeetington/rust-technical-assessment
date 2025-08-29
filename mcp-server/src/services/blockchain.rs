@@ -10,8 +10,8 @@
 
 use alloy_ens::NameOrAddress;
 use alloy_network::AnyNetwork;
-use alloy_primitives::{Address, U256, Bytes};
-use alloy_provider::{Provider, ProviderBuilder, RootProvider};
+use alloy_primitives::{Address, U256, Bytes, TxHash};
+use alloy_provider::{Provider, ProviderBuilder, RootProvider, PendingTransactionBuilder};
 use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
 use cast::Cast;
@@ -25,7 +25,7 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 use serde::{Deserialize, Serialize};
-use std::{env, str::FromStr};
+use std::{env, str::FromStr, time::Duration};
 use tracing::{info, error};
 use hex;
 
@@ -74,6 +74,15 @@ pub struct SwapRequest {
     pub dex: Option<String>,
     #[schemars(description = "Slippage tolerance in basis points (e.g., '500' for 5%)")]
     pub slippage: Option<String>,
+}
+
+/// Request structure for transaction status checks
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct TransactionStatusRequest {
+    #[schemars(description = "Transaction hash to check status for")]
+    pub tx_hash: String,
+    #[schemars(description = "Timeout in seconds for waiting for transaction (default: 30)")]
+    pub timeout: Option<u64>,
 }
 
 /// Response structure for account information
@@ -284,24 +293,50 @@ impl BlockchainService {
         let pending_tx = cast.send(tx).await.unwrap();
         let tx_hash = *pending_tx.tx_hash();
         
-        let response_text = format!(
-            "ETH Transfer Successful:\n\
-            From: {} (Alice)\n\
-            To: {} ({})\n\
-            Amount: {} ETH\n\
-            Transaction Hash: {}\n\
-            Status: Sent to network",
-            self.alice_address,
-            validated_recipient.address,
-            validated_recipient.address_type,
-            amount,
-            tx_hash
-        );
+        info!("📝 Transaction sent with hash: {}", tx_hash);
         
-        info!("🔍 MCP Server send_eth response: {}", response_text);
-        info!("📝 Transaction hash: {}", tx_hash);
-        
-        Ok(CallToolResult::success(vec![Content::text(response_text)]))
+        // Wait for transaction confirmation (30 second timeout)
+        match self.wait_for_transaction_confirmation(tx_hash, 30).await {
+            Ok(confirmation_text) => {
+                let response_text = format!(
+                    "ETH Transfer:\n\
+                    From: {} (Alice)\n\
+                    To: {} ({})\n\
+                    Amount: {} ETH\n\
+                    \n{}",
+                    self.alice_address,
+                    validated_recipient.address,
+                    validated_recipient.address_type,
+                    amount,
+                    confirmation_text
+                );
+                
+                info!("🔍 MCP Server send_eth response: {}", response_text);
+                Ok(CallToolResult::success(vec![Content::text(response_text)]))
+            }
+            Err(_e) => {
+                // If waiting fails, return the transaction hash for manual checking
+                let response_text = format!(
+                    "ETH Transfer Sent:\n\
+                    From: {} (Alice)\n\
+                    To: {} ({})\n\
+                    Amount: {} ETH\n\
+                    Transaction Hash: {}\n\
+                    Status: Sent to network (confirmation timeout)\n\
+                    \n⚠️  Transaction was sent but confirmation timed out.\n\
+                    Use check_transaction_status with hash {} to check the final status.",
+                    self.alice_address,
+                    validated_recipient.address,
+                    validated_recipient.address_type,
+                    amount,
+                    tx_hash,
+                    tx_hash
+                );
+                
+                info!("⚠️  MCP Server send_eth response (timeout): {}", response_text);
+                Ok(CallToolResult::success(vec![Content::text(response_text)]))
+            }
+        }
     }
 
     /// Check if a contract is deployed using Cast::code
@@ -702,33 +737,68 @@ impl BlockchainService {
             .map_err(|e| McpError::internal_error(format!("Failed to send swap transaction: {}", e), None))?;
         let tx_hash = *pending_tx.tx_hash();
         
-        let response_text = format!(
-            "Token Swap Successful:\n\
-            From: {} (Alice)\n\
-            Swap: {} {} → {} {}\n\
-            DEX: {}\n\
-            Router: {}\n\
-            Amount: {} {} ({} wei)\n\
-            Path: {} → {}\n\
-            Slippage: {}%\n\
-            Transaction Hash: {}\n\
-            Status: Sent to network\n\n\
-            💡 Note: This is a test transaction on forked mainnet.\n\
-            The swap will execute using real Uniswap V2 contracts.",
-            self.alice_address,
-            amount, from_token, amount, to_token,
-            dex_name,
-            router_address,
-            amount, from_token, amount_wei,
-            from_token, to_token,
-            (slippage_bps.parse::<u32>().unwrap_or(500) as f64) / 100.0,
-            tx_hash
-        );
+        info!("📝 Swap transaction sent with hash: {}", tx_hash);
         
-        info!("🔍 MCP Server swap_tokens response: {}", response_text);
-        info!("📝 Transaction hash: {}", tx_hash);
-        
-        Ok(CallToolResult::success(vec![Content::text(response_text)]))
+        // Wait for transaction confirmation (30 second timeout)
+        match self.wait_for_transaction_confirmation(tx_hash, 30).await {
+            Ok(confirmation_text) => {
+                let response_text = format!(
+                    "Token Swap:\n\
+                    From: {} (Alice)\n\
+                    Swap: {} {} → {} {}\n\
+                    DEX: {}\n\
+                    Router: {}\n\
+                    Amount: {} {} ({} wei)\n\
+                    Path: {} → {}\n\
+                    Slippage: {}%\n\
+                    \n{}\n\n\
+                    💡 Note: This is a test transaction on forked mainnet.\n\
+                    The swap will execute using real Uniswap V2 contracts.",
+                    self.alice_address,
+                    amount, from_token, amount, to_token,
+                    dex_name,
+                    router_address,
+                    amount, from_token, amount_wei,
+                    from_token, to_token,
+                    (slippage_bps.parse::<u32>().unwrap_or(500) as f64) / 100.0,
+                    confirmation_text
+                );
+                
+                info!("🔍 MCP Server swap_tokens response: {}", response_text);
+                Ok(CallToolResult::success(vec![Content::text(response_text)]))
+            }
+            Err(_e) => {
+                // If waiting fails, return the transaction hash for manual checking
+                let response_text = format!(
+                    "Token Swap Sent:\n\
+                    From: {} (Alice)\n\
+                    Swap: {} {} → {} {}\n\
+                    DEX: {}\n\
+                    Router: {}\n\
+                    Amount: {} {} ({} wei)\n\
+                    Path: {} → {}\n\
+                    Slippage: {}%\n\
+                    Transaction Hash: {}\n\
+                    Status: Sent to network (confirmation timeout)\n\
+                    \n⚠️  Transaction was sent but confirmation timed out.\n\
+                    Use check_transaction_status with hash {} to check the final status.\n\n\
+                    💡 Note: This is a test transaction on forked mainnet.\n\
+                    The swap will execute using real Uniswap V2 contracts.",
+                    self.alice_address,
+                    amount, from_token, amount, to_token,
+                    dex_name,
+                    router_address,
+                    amount, from_token, amount_wei,
+                    from_token, to_token,
+                    (slippage_bps.parse::<u32>().unwrap_or(500) as f64) / 100.0,
+                    tx_hash,
+                    tx_hash
+                );
+                
+                info!("⚠️  MCP Server swap_tokens response (timeout): {}", response_text);
+                Ok(CallToolResult::success(vec![Content::text(response_text)]))
+            }
+        }
     }
 
     /// Get default addresses as specified in PRD
@@ -862,6 +932,216 @@ impl BlockchainService {
         }
         
         Ok(format!("0x{}", hex::encode(calldata)))
+    }
+
+    /// Check transaction status and receipt
+    #[tool(description = "Check the status of a transaction by hash - returns success/failure and receipt details")]
+    pub async fn check_transaction_status(
+        &self,
+        Parameters(TransactionStatusRequest { tx_hash, timeout }): Parameters<TransactionStatusRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        info!("🔍 Checking transaction status for: {}", tx_hash);
+        
+        let tx_hash = TxHash::from_str(&tx_hash)
+            .map_err(|e| McpError::invalid_params(format!("Invalid transaction hash: {}", e), None))?;
+        
+        let timeout_secs = timeout.unwrap_or(30);
+        
+        // Try to get the transaction receipt
+        match self.provider.get_transaction_receipt(tx_hash).await {
+            Ok(Some(receipt)) => {
+                // Transaction has been mined
+                let status = if receipt.inner.inner.inner.receipt.status.coerce_status() {
+                    "SUCCESS"
+                } else {
+                    "FAILED"
+                };
+                
+                let gas_used = receipt.gas_used;
+                let gas_price = receipt.effective_gas_price;
+                let total_cost = gas_used as u128 * gas_price;
+                
+                let response_text = format!(
+                    "Transaction Status: {}\n\
+                    Hash: {}\n\
+                    Block Number: {}\n\
+                    Gas Used: {}\n\
+                    Gas Price: {} wei\n\
+                    Total Cost: {} wei ({:.6} ETH)\n\
+                    Status: {}\n\
+                    \n📋 Receipt Details:\n\
+                    - Transaction Type: {}\n\
+                    - Cumulative Gas Used: {}\n\
+                    - Contract Address: {}\n\
+                    - Logs: {}",
+                    status,
+                    tx_hash,
+                    receipt.block_number.unwrap_or_default(),
+                    gas_used,
+                    gas_price,
+                    total_cost,
+                    total_cost.to_f64().unwrap_or(0.0) / 1e18,
+                    status,
+                    receipt.inner.inner.r#type,
+                    receipt.inner.inner.inner.receipt.cumulative_gas_used,
+                    receipt.contract_address.map(|addr| format!("{:?}", addr)).unwrap_or_else(|| "None".to_string()),
+                    receipt.logs().len()
+                );
+                
+                info!("✅ Transaction status check completed: {}", status);
+                Ok(CallToolResult::success(vec![Content::text(response_text)]))
+            }
+            Ok(None) => {
+                // Transaction not yet mined, try to wait for it
+                info!("⏳ Transaction not yet mined, waiting up to {} seconds...", timeout_secs);
+                
+                match PendingTransactionBuilder::new(self.provider.clone(), tx_hash)
+                    .with_timeout(Some(Duration::from_secs(timeout_secs)))
+                    .get_receipt()
+                    .await
+                {
+                    Ok(receipt) => {
+                        let status = if receipt.inner.inner.inner.receipt.status.coerce_status() {
+                            "SUCCESS"
+                        } else {
+                            "FAILED"
+                        };
+                        
+                        let gas_used = receipt.gas_used;
+                        let gas_price = receipt.effective_gas_price;
+                        let total_cost = gas_used as u128 * gas_price;
+                        
+                        let response_text = format!(
+                            "Transaction Status: {} (Waited for confirmation)\n\
+                            Hash: {}\n\
+                            Block Number: {}\n\
+                            Gas Used: {}\n\
+                            Gas Price: {} wei\n\
+                            Total Cost: {} wei ({:.6} ETH)\n\
+                            Status: {}\n\
+                            \n📋 Receipt Details:\n\
+                            - Transaction Type: {}\n\
+                            - Cumulative Gas Used: {}\n\
+                            - Contract Address: {}\n\
+                            - Logs: {}",
+                            status,
+                            tx_hash,
+                            receipt.block_number.unwrap_or_default(),
+                            gas_used,
+                            gas_price,
+                            total_cost,
+                            total_cost.to_f64().unwrap_or(0.0) / 1e18,
+                            status,
+                            receipt.inner.inner.r#type,
+                            receipt.inner.inner.inner.receipt.cumulative_gas_used,
+                            receipt.contract_address.map(|addr| format!("{:?}", addr)).unwrap_or_else(|| "None".to_string()),
+                            receipt.logs().len()
+                        );
+                        
+                        info!("✅ Transaction confirmed after waiting: {}", status);
+                        Ok(CallToolResult::success(vec![Content::text(response_text)]))
+                    }
+                    Err(_e) => {
+                        // Check if transaction exists in mempool
+                        match self.provider.get_transaction_by_hash(tx_hash).await {
+                            Ok(Some(_)) => {
+                                let response_text = format!(
+                                    "Transaction Status: PENDING\n\
+                                    Hash: {}\n\
+                                    Status: Transaction is in mempool but not yet mined\n\
+                                    \n⏳ The transaction was sent to the network and is waiting to be included in a block.\n\
+                                    Try checking again in a few seconds, or increase the timeout parameter.\n\
+                                    \n💡 Tip: Use a longer timeout (e.g., 60 seconds) for slower networks.",
+                                    tx_hash
+                                );
+                                
+                                info!("⏳ Transaction is pending in mempool");
+                                Ok(CallToolResult::success(vec![Content::text(response_text)]))
+                            }
+                            Ok(None) => {
+                                let response_text = format!(
+                                    "Transaction Status: NOT FOUND\n\
+                                    Hash: {}\n\
+                                    Status: Transaction not found in mempool or blockchain\n\
+                                    \n❌ This transaction hash was not found on the network.\n\
+                                    Possible reasons:\n\
+                                    - Transaction was never sent\n\
+                                    - Transaction was dropped from mempool\n\
+                                    - Invalid transaction hash\n\
+                                    - Wrong network",
+                                    tx_hash
+                                );
+                                
+                                info!("❌ Transaction not found");
+                                Ok(CallToolResult::success(vec![Content::text(response_text)]))
+                            }
+                            Err(e) => {
+                                Err(McpError::internal_error(
+                                    format!("Failed to check transaction status: {}", e),
+                                    None
+                                ))
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                Err(McpError::internal_error(
+                    format!("Failed to get transaction receipt: {}", e),
+                    None
+                ))
+            }
+        }
+    }
+
+    /// Wait for transaction confirmation and return detailed status
+    async fn wait_for_transaction_confirmation(&self, tx_hash: TxHash, timeout_secs: u64) -> Result<String, McpError> {
+        info!("⏳ Waiting for transaction confirmation: {}", tx_hash);
+        
+        match PendingTransactionBuilder::new(self.provider.clone(), tx_hash)
+            .with_timeout(Some(Duration::from_secs(timeout_secs)))
+            .get_receipt()
+            .await
+        {
+            Ok(receipt) => {
+                let status = if receipt.inner.inner.inner.receipt.status.coerce_status() {
+                    "SUCCESS"
+                } else {
+                    "FAILED"
+                };
+                
+                let gas_used = receipt.gas_used;
+                let gas_price = receipt.effective_gas_price;
+                let total_cost = gas_used as u128 * gas_price;
+                
+                let response_text = format!(
+                    "Transaction Confirmed: {}\n\
+                    Hash: {}\n\
+                    Block Number: {}\n\
+                    Gas Used: {}\n\
+                    Gas Price: {} wei\n\
+                    Total Cost: {} wei ({:.6} ETH)\n\
+                    Status: {}",
+                    status,
+                    tx_hash,
+                    receipt.block_number.unwrap_or_default(),
+                    gas_used,
+                    gas_price,
+                    total_cost,
+                    total_cost.to_f64().unwrap_or(0.0) / 1e18,
+                    status
+                );
+                
+                info!("✅ Transaction confirmed: {}", status);
+                Ok(response_text)
+            }
+            Err(e) => {
+                Err(McpError::internal_error(
+                    format!("Failed to wait for transaction confirmation: {}", e),
+                    None
+                ))
+            }
+        }
     }
 }
 

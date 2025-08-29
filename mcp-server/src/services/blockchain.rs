@@ -678,6 +678,18 @@ impl BlockchainService {
             )]))
         }
 
+        // Special handling for ETH to WETH swaps - use direct WETH contract
+        if from_token.to_uppercase() == "ETH" && to_token.to_uppercase() == "WETH" {
+            info!("🎯 Detected ETH to WETH swap - using direct WETH contract");
+            return self.swap_eth_to_weth_direct(amount).await;
+        }
+
+        // Special handling for WETH to ETH swaps - use direct WETH contract
+        if from_token.to_uppercase() == "WETH" && to_token.to_uppercase() == "ETH" {
+            info!("🎯 Detected WETH to ETH swap - using direct WETH contract");
+            return self.swap_weth_to_eth_direct(amount).await;
+        }
+
         let dex_name = dex.unwrap_or_else(|| "Uniswap V2".to_string());
         let slippage_bps = slippage.unwrap_or_else(|| "500".to_string()); // Default 5% slippage
         
@@ -796,6 +808,194 @@ impl BlockchainService {
                 );
                 
                 info!("⚠️  MCP Server swap_tokens response (timeout): {}", response_text);
+                Ok(CallToolResult::success(vec![Content::text(response_text)]))
+            }
+        }
+    }
+
+    /// Direct ETH to WETH swap using WETH contract
+    async fn swap_eth_to_weth_direct(&self, amount: String) -> Result<CallToolResult, McpError> {
+        info!("🎯 Executing direct ETH to WETH swap for {} ETH", amount);
+        
+        // Step 1: Get WETH contract address
+        let weth_address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"; // WETH on mainnet
+        let weth_addr = Address::from_str(weth_address)
+            .map_err(|e| McpError::internal_error(format!("Invalid WETH address: {}", e), None))?;
+        
+        info!("📋 Using WETH contract: {}", weth_address);
+        
+        // Step 2: Calculate amount in wei
+        let amount_wei = self.parse_amount_to_wei(&amount, "ETH").await?;
+        
+        info!("💰 Amount to wrap: {} ETH ({} wei)", amount, amount_wei);
+        
+        // Step 3: Encode the deposit function call
+        // WETH deposit() function selector: 0xd0e30db0
+        let mut calldata = Vec::new();
+        calldata.extend_from_slice(&[0xd0, 0xe3, 0x0d, 0xb0]); // deposit() selector
+        
+        info!("🔧 Encoded deposit calldata: 0x{}", hex::encode(&calldata));
+        
+        // Step 4: Create and send transaction using Cast
+        let tx = TransactionRequest::default()
+            .to(weth_addr)
+            .value(amount_wei) // Send ETH with the transaction
+            .input(Bytes::from(calldata).into())
+            .from(self.alice_address);
+        
+        let tx = WithOtherFields::new(tx);
+        
+        // Create Cast instance and send transaction
+        let cast = Cast::new(self.provider.clone());
+        let pending_tx = cast.send(tx).await
+            .map_err(|e| McpError::internal_error(format!("Failed to send ETH to WETH transaction: {}", e), None))?;
+        let tx_hash = *pending_tx.tx_hash();
+        
+        info!("📝 ETH to WETH transaction sent with hash: {}", tx_hash);
+        
+        // Wait for transaction confirmation (30 second timeout)
+        match self.wait_for_transaction_confirmation(tx_hash, 30).await {
+            Ok(confirmation_text) => {
+                let response_text = format!(
+                    "ETH to WETH Swap (Direct):\n\
+                    From: {} (Alice)\n\
+                    Swap: {} ETH → {} WETH\n\
+                    WETH Contract: {}\n\
+                    Amount: {} ETH ({} wei)\n\
+                    Method: WETH.deposit()\n\
+                    \n{}\n\n\
+                    💡 Note: This is a test transaction on forked mainnet.\n\
+                    The ETH has been wrapped into WETH using the official WETH contract.\n\
+                    WETH is the ERC-20 wrapped version of ETH that can be used in DeFi protocols.",
+                    self.alice_address,
+                    amount, amount,
+                    weth_address,
+                    amount, amount_wei,
+                    confirmation_text
+                );
+                
+                info!("🔍 MCP Server swap_eth_to_weth_direct response: {}", response_text);
+                Ok(CallToolResult::success(vec![Content::text(response_text)]))
+            }
+            Err(_e) => {
+                // If waiting fails, return the transaction hash for manual checking
+                let response_text = format!(
+                    "ETH to WETH Swap Sent (Direct):\n\
+                    From: {} (Alice)\n\
+                    Swap: {} ETH → {} WETH\n\
+                    WETH Contract: {}\n\
+                    Amount: {} ETH ({} wei)\n\
+                    Method: WETH.deposit()\n\
+                    Transaction Hash: {}\n\
+                    Status: Sent to network (confirmation timeout)\n\
+                    \n⚠️  Transaction was sent but confirmation timed out.\n\
+                    Use check_transaction_status with hash {} to check the final status.\n\n\
+                    💡 Note: This is a test transaction on forked mainnet.\n\
+                    The ETH will be wrapped into WETH using the official WETH contract.",
+                    self.alice_address,
+                    amount, amount,
+                    weth_address,
+                    amount, amount_wei,
+                    tx_hash,
+                    tx_hash
+                );
+                
+                info!("⚠️  MCP Server swap_eth_to_weth_direct response (timeout): {}", response_text);
+                Ok(CallToolResult::success(vec![Content::text(response_text)]))
+            }
+        }
+    }
+
+    /// Direct WETH to ETH swap using WETH contract
+    async fn swap_weth_to_eth_direct(&self, amount: String) -> Result<CallToolResult, McpError> {
+        info!("🎯 Executing direct WETH to ETH swap for {} WETH", amount);
+        
+        // Step 1: Get WETH contract address
+        let weth_address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"; // WETH on mainnet
+        let weth_addr = Address::from_str(weth_address)
+            .map_err(|e| McpError::internal_error(format!("Invalid WETH address: {}", e), None))?;
+        
+        info!("📋 Using WETH contract: {}", weth_address);
+        
+        // Step 2: Calculate amount in wei
+        let amount_wei = self.parse_amount_to_wei(&amount, "WETH").await?;
+        
+        info!("💰 Amount to unwrap: {} WETH ({} wei)", amount, amount_wei);
+        
+        // Step 3: Encode the withdraw function call
+        // WETH withdraw(uint256) function selector: 0x2e1a7d4d
+        let mut calldata = Vec::new();
+        calldata.extend_from_slice(&[0x2e, 0x1a, 0x7d, 0x4d]); // withdraw() selector
+        
+        // Encode the amount parameter (uint256) - 32 bytes
+        let amount_bytes: [u8; 32] = amount_wei.to_be_bytes();
+        calldata.extend_from_slice(&amount_bytes);
+        
+        info!("🔧 Encoded withdraw calldata: 0x{}", hex::encode(&calldata));
+        
+        // Step 4: Create and send transaction using Cast
+        let tx = TransactionRequest::default()
+            .to(weth_addr)
+            .input(Bytes::from(calldata).into())
+            .from(self.alice_address);
+        
+        let tx = WithOtherFields::new(tx);
+        
+        // Create Cast instance and send transaction
+        let cast = Cast::new(self.provider.clone());
+        let pending_tx = cast.send(tx).await
+            .map_err(|e| McpError::internal_error(format!("Failed to send WETH to ETH transaction: {}", e), None))?;
+        let tx_hash = *pending_tx.tx_hash();
+        
+        info!("📝 WETH to ETH transaction sent with hash: {}", tx_hash);
+        
+        // Wait for transaction confirmation (30 second timeout)
+        match self.wait_for_transaction_confirmation(tx_hash, 30).await {
+            Ok(confirmation_text) => {
+                let response_text = format!(
+                    "WETH to ETH Swap (Direct):\n\
+                    From: {} (Alice)\n\
+                    Swap: {} WETH → {} ETH\n\
+                    WETH Contract: {}\n\
+                    Amount: {} WETH ({} wei)\n\
+                    Method: WETH.withdraw()\n\
+                    \n{}\n\n\
+                    💡 Note: This is a test transaction on forked mainnet.\n\
+                    The WETH has been unwrapped into ETH using the official WETH contract.",
+                    self.alice_address,
+                    amount, amount,
+                    weth_address,
+                    amount, amount_wei,
+                    confirmation_text
+                );
+                
+                info!("🔍 MCP Server swap_weth_to_eth_direct response: {}", response_text);
+                Ok(CallToolResult::success(vec![Content::text(response_text)]))
+            }
+            Err(_e) => {
+                // If waiting fails, return the transaction hash for manual checking
+                let response_text = format!(
+                    "WETH to ETH Swap Sent (Direct):\n\
+                    From: {} (Alice)\n\
+                    Swap: {} WETH → {} ETH\n\
+                    WETH Contract: {}\n\
+                    Amount: {} WETH ({} wei)\n\
+                    Method: WETH.withdraw()\n\
+                    Transaction Hash: {}\n\
+                    Status: Sent to network (confirmation timeout)\n\
+                    \n⚠️  Transaction was sent but confirmation timed out.\n\
+                    Use check_transaction_status with hash {} to check the final status.\n\n\
+                    💡 Note: This is a test transaction on forked mainnet.\n\
+                    The WETH will be unwrapped into ETH using the official WETH contract.",
+                    self.alice_address,
+                    amount, amount,
+                    weth_address,
+                    amount, amount_wei,
+                    tx_hash,
+                    tx_hash
+                );
+                
+                info!("⚠️  MCP Server swap_weth_to_eth_direct response (timeout): {}", response_text);
                 Ok(CallToolResult::success(vec![Content::text(response_text)]))
             }
         }

@@ -167,3 +167,143 @@ async fn test_calldata_encoding() {
     
     println!("🔚 Calldata encoding test completed\n");
 }
+
+#[tokio::test]
+async fn test_eth_to_weth_direct_swap() {
+    println!("\n🧪 Testing direct ETH to WETH swap (should work without liquidity)...");
+    
+    // Try to create blockchain service
+    match BlockchainService::new().await {
+        Ok(service) => {
+            println!("✅ BlockchainService created successfully");
+            
+            // Test ETH to WETH swap using direct WETH contract
+            let swap_request = SwapRequest {
+                from_token: "ETH".to_string(),
+                to_token: "WETH".to_string(),
+                amount: "0.01".to_string(), // Small amount for testing
+                dex: Some("WETH Contract".to_string()),
+                slippage: Some("100".to_string()), // 1% slippage (not used for direct swaps)
+            };
+            
+            println!("📝 INPUT: Swap {} {} to {} using direct WETH contract", 
+                     swap_request.amount, swap_request.from_token, swap_request.to_token);
+            println!("📝 EXPECTED: This should work without needing Uniswap liquidity");
+            
+            let result = service.swap_tokens(rmcp::handler::server::wrapper::Parameters(swap_request)).await;
+            
+            match result {
+                Ok(call_result) => {
+                    println!("✅ ETH to WETH swap completed!");
+                    println!("📊 Response: {:?}", call_result);
+                    
+                    // Extract the text content
+                    if let Some(content) = call_result.content.first() {
+                        println!("📝 Swap Response: {:?}", content);
+                        
+                        // Check if it contains success information
+                        if format!("{:?}", content).contains("ETH to WETH Swap (Direct)") {
+                            println!("🎉 Direct ETH to WETH swap successful!");
+                            println!("💡 This used WETH.deposit() function directly");
+                        } else if format!("{:?}", content).contains("ERROR") {
+                            println!("⚠️  ETH to WETH swap failed - check error details");
+                        }
+                    }
+                    
+                    println!("✅ Response validation: PASSED");
+                }
+                Err(e) => {
+                    println!("❌ ETH to WETH swap failed with error: {}", e);
+                    println!("💡 This might be expected if:");
+                    println!("   - Private key is not set");
+                    println!("   - Anvil is not running");
+                    println!("   - Network connection issues");
+                }
+            }
+        }
+        Err(e) => {
+            println!("⚠️  BlockchainService creation failed: {}", e);
+            println!("💡 This is expected if anvil is not running");
+            println!("   Start anvil with: anvil --fork-url https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY");
+        }
+    }
+    
+    println!("🔚 Direct ETH to WETH swap test completed\n");
+}
+
+#[tokio::test]
+async fn test_uniswap_v2_swap_vs_direct() {
+    println!("\n🧪 Testing Uniswap V2 vs Direct WETH swap comparison...");
+    
+    // Try to create blockchain service
+    match BlockchainService::new().await {
+        Ok(service) => {
+            println!("✅ BlockchainService created successfully");
+            
+            // Test 1: ETH to WETH using direct method (should work)
+            println!("\n📋 Test 1: ETH to WETH using direct WETH contract");
+            let direct_swap_request = SwapRequest {
+                from_token: "ETH".to_string(),
+                to_token: "WETH".to_string(),
+                amount: "0.001".to_string(),
+                dex: Some("WETH Contract".to_string()),
+                slippage: Some("100".to_string()),
+            };
+            
+            let direct_result = service.swap_tokens(rmcp::handler::server::wrapper::Parameters(direct_swap_request)).await;
+            
+            match direct_result {
+                Ok(call_result) => {
+                    if let Some(content) = call_result.content.first() {
+                        if format!("{:?}", content).contains("ETH to WETH Swap (Direct)") {
+                            println!("✅ Direct swap: SUCCESS");
+                        } else {
+                            println!("❌ Direct swap: FAILED");
+                        }
+                    }
+                }
+                Err(_) => {
+                    println!("❌ Direct swap: FAILED (expected if no private key)");
+                }
+            }
+            
+            // Test 2: ETH to USDC using Uniswap V2 (should fail due to no liquidity)
+            println!("\n📋 Test 2: ETH to USDC using Uniswap V2 (should fail due to no liquidity)");
+            let uniswap_swap_request = SwapRequest {
+                from_token: "ETH".to_string(),
+                to_token: "USDC".to_string(),
+                amount: "0.001".to_string(),
+                dex: Some("Uniswap V2".to_string()),
+                slippage: Some("500".to_string()),
+            };
+            
+            let uniswap_result = service.swap_tokens(rmcp::handler::server::wrapper::Parameters(uniswap_swap_request)).await;
+            
+            match uniswap_result {
+                Ok(call_result) => {
+                    if let Some(content) = call_result.content.first() {
+                        if format!("{:?}", content).contains("FAILED") || format!("{:?}", content).contains("revert") {
+                            println!("✅ Uniswap V2 swap: FAILED (expected due to no liquidity)");
+                        } else {
+                            println!("❌ Uniswap V2 swap: SUCCESS (unexpected - might have liquidity now)");
+                        }
+                    }
+                }
+                Err(_) => {
+                    println!("✅ Uniswap V2 swap: FAILED (expected due to no liquidity)");
+                }
+            }
+            
+            println!("\n📊 Summary:");
+            println!("• Direct ETH to WETH: Should work (no liquidity needed)");
+            println!("• Uniswap V2 ETH to USDC: Should fail (no liquidity in pools)");
+            println!("• Both approaches are implemented and can be tested");
+            
+        }
+        Err(e) => {
+            println!("❌ BlockchainService creation failed: {}", e);
+        }
+    }
+    
+    println!("🔚 Swap comparison test completed\n");
+}

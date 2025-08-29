@@ -1,13 +1,8 @@
 # Rust Technical Assessment - AI Agent System
 
-**Position**: Rust Engineer  
-**Assessment**: AI-Powered Ethereum Blockchain Agent
+An AI agent system that can interact with Ethereum blockchain using natural language commands. The system consists of two main components:
 
-## 🎯 Project Overview
-
-This project implements an AI agent system that enables natural language interaction with the Ethereum blockchain. The system demonstrates advanced Rust development skills, AI integration capabilities, and blockchain expertise through a two-component architecture leveraging cutting-edge technologies.
-
-## 🏗️ System Architecture
+## Architecture
 
 ```
              ┌─────────────────┐    MCP Protocol    ┌──────────────────┐
@@ -20,6 +15,7 @@ Claude ◄───► │ • LLM API Key   │                    │ • Tx G
              │ • Response      │                    │ • Anthropic SDK  │
              └─────────────────┘                    └──────────────────┘
                       │                                       │
+                      │                                       │
                       └───────────────┐           ┌───────────┘
                                       │           │
                                  ┌────▼───────────▼──────┐
@@ -29,159 +25,207 @@ Claude ◄───► │ • LLM API Key   │                    │ • Tx G
                                  └───────────────────────┘
 ```
 
-## 🚀 Core Components
+## Prerequisites
 
-### AI Agent Client (RIG Framework)
-- **Technology**: RIG (Rust AI agent framework)
-- **Interface**: CLI REPL with natural language processing
-- **AI Integration**: Claude API for intelligent command interpretation
-- **Capabilities**: Processes user intent and orchestrates blockchain operations
+- Rust 1.70+ and Cargo
+- Foundry (for blockchain operations)
+- Anthropic API key
+- Brave Search API key (optional, for search functionality)
 
-### MCP Server (Model Context Protocol)
-- **Technology**: Anthropic Rust SDK for MCP implementation
-- **Purpose**: Exposes Foundry blockchain tools as standardized MCP tools
-- **Integration**: Direct integration with Foundry's cast functionality
-- **Network**: Operates on forked Ethereum mainnet for safe testing
+## Environment Setup
 
-## 💡 Key Features & Capabilities
-
-### Core Functionality (Required)
-The system handles sophisticated natural language commands:
+### 1. Clone and Setup
 
 ```bash
-# Natural Language Blockchain Operations
-> send 1 ETH from Alice to Bob
-> How much USDC does Alice have?
-> Is Uniswap V2 Router (0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D) deployed?
+git clone <repository-url>
+cd rust-technical-assessment
 ```
 
-**Technical Implementation**:
-- ✅ Natural language parsing and intent recognition
-- ✅ Automatic sender identification (defaults to account 0)
-- ✅ Address validation and ENS resolution
-- ✅ Transaction generation using Foundry toolchain
-- ✅ Execution on forked Ethereum network
-- ✅ Transaction confirmation and hash reporting
+### 2. Environment Variables
 
-### Advanced Features (Bonus)
-
-#### 🌐 Server-side External API Integration
-- **APIs**: Brave Search, DefiLlama, 0x Protocol
-- **Capability**: Real-time data integration for DeFi operations
-- **Example**: Complex Uniswap swaps with live price data
+Create a `.env` file in the root directory:
 
 ```bash
-> Use Uniswap V2 Router to swap 10 ETH for USDC on Alice's account
+# Required: Anthropic API key for RIG client
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# Optional: Brave Search API key for search functionality
+BRAVE_SEARCH_API_KEY=your_brave_search_api_key_here
+
+# Optional: Private key for Alice (account 0) for transactions
+ALICE_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
+# Optional: Server configuration
+MCP_SERVER_HOST=127.0.0.1
+MCP_SERVER_PORT=8080
+MCP_PATH=/mcp
+
+# Optional: Logging
+RUST_LOG=info
 ```
 
-#### 🧠 Client-side RAG System
-- **Technology**: Retrieval-Augmented Generation with local embeddings
-- **Data Sources**: Uniswap V2/V3 documentation and contract source code
-- **Capability**: Contextual documentation assistance
+### 3. Start Foundry Anvil
 
 ```bash
-> How do I calculate slippage for Uniswap V3?
-> What's the difference between exactInput and exactOutput?
-> Show me the SwapRouter contract interface
-```
-
-## 🛠️ Technology Stack
-
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| **Client Framework** | RIG (Rust AI agent framework) | AI agent orchestration |
-| **Server Framework** | Anthropic Rust SDK | MCP protocol implementation |
-| **Blockchain Tools** | Foundry (forge, cast, anvil) | Ethereum interaction |
-| **Language** | Rust | High-performance system development |
-| **AI Provider** | Claude API | Natural language processing |
-| **Interface** | CLI REPL | User interaction |
-| **Network** | Forked Ethereum Mainnet | Safe testing environment |
-
-## 🧪 Testing
-
-This project includes comprehensive testing across multiple layers:
-
-### Test Organization
-- **Unit Tests**: Inline with source code using `#[cfg(test)]` modules
-- **Integration Tests**: Rust files in `scripts/tests/` for complete workflows
-- **End-to-End Tests**: Shell scripts in `scripts/tests/` for full system validation
-
-### Running Tests
-```bash
-# Run all tests
-./scripts/tests/run_all.sh
-
-# Run Rust tests only
-cargo test
-
-# Run specific test categories
-cargo run --bin test_usdc_direct --manifest-path scripts/tests/Cargo.toml  # Integration tests
-./scripts/tests/test_complete_system.sh  # End-to-end tests
-```
-
-For detailed testing information, see [TESTING.md](./TESTING.md).
-
-## 🔧 Development Environment
-
-### Test Network Configuration
-```bash
+# Start anvil with mainnet fork (uses PRD-provided Alchemy key)
 anvil --fork-url https://eth-mainnet.g.alchemy.com/v2/4UjEl1ULr2lQYsGR5n7gGKd3pzgAzxKs
 ```
 
-**Test Accounts**:
-- **Alice**: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` (10,000 ETH)
-- **Bob**: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` (10,000 ETH)
-- **Network**: `127.0.0.1:8545`
+This will start a local Ethereum node with these test accounts:
 
-### Prerequisites
-- ✅ **Foundry v1.3.2-stable** (forge, cast, anvil)
-- ✅ Anthropic API key configuration
-- ✅ RIG framework dependencies
-- ✅ **Rust 1.85+ with Edition 2024**
+```
+Available Accounts
+==================
+(0) 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 (10000.000000000000000000 ETH) - Alice
+(1) 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 (10000.000000000000000000 ETH) - Bob
+(2) 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC (10000.000000000000000000 ETH)
+...
+```
 
-## 📋 Implementation Strategy
+## Building and Running
 
-This project follows a methodical, AI-assisted development approach:
+### 1. Build the Project
 
-1. **Environment Setup**: Foundry network, API keys, dependencies
-2. **Core MCP Server**: Blockchain tool exposure via MCP protocol
-3. **RIG Client Development**: CLI interface with Claude integration
-4. **Integration Testing**: End-to-end natural language workflows
-5. **Advanced Features**: External APIs and RAG system implementation
+```bash
+# Build both mcp-server and rig-client
+cargo build --release
+```
 
-## 🎯 Assessment Criteria Alignment
+### 2. Start the MCP Server
 
-### Technical Excellence
-- **Rust Proficiency**: Advanced async/await patterns, error handling, and idiomatic code
-- **Blockchain Integration**: Direct Foundry integration with proper transaction handling
-- **AI Integration**: Sophisticated natural language processing and tool orchestration
-- **Protocol Implementation**: Standards-compliant MCP server development
+```bash
+# Start the MCP server (blockchain + search tools)
+cd mcp-server
+cargo run --release
+```
 
-### Innovation & AI Usage
-- **"Vibe Coding"**: AI-assisted developmental approach for quick initial project structure and implementation
-- **Modern Architecture**: Cutting-edge MCP protocol implementation
-- **Intelligent Design**: Context-aware natural language processing
-- **Rapid Iteration**: AI-powered development acceleration
+The server will start on `http://127.0.0.1:8080/mcp`
 
-## 📁 Project Structure
+### 3. Start the RIG Client
+
+```bash
+# In a new terminal, start the RIG client
+cd rig-client
+cargo run --release
+```
+
+## Usage Examples
+
+Once both server and client are running, you can use natural language commands:
+
+```
+> send 1 ETH from Alice to Bob
+> How much USDC does Alice have?
+> Is Uniswap V2 Router (0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D) deployed?
+> Use Uniswap V2 Router to swap 10 ETH for USDC on Alice's account
+```
+
+## Testing
+
+### Run All Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run specific test categories
+cargo test --test service_creation_tests
+cargo test --test token_balance_tests
+cargo test --test swap_tests
+```
+
+### Test Structure
+
+- `mcp-server/tests/` - Unit and integration tests for MCP server
+- `rig-client/tests/` - Tests for RIG client functionality
+- `scripts/tests/` - Shell scripts for end-to-end testing
+
+## Project Structure
 
 ```
 rust-technical-assessment/
-├── .cursorrules              # AI development context
-├── PRD.md                   # Product Requirements Document
-├── IMPLEMENTATION.md        # Step-by-step development guide
-├── README.md               # This file
-├── mcp-server/             # Anthropic MCP server implementation
-└── rig-client/             # RIG framework AI agent client
+├── Cargo.toml                 # Workspace configuration
+├── Cargo.lock                 # Locked dependencies
+├── .env.example              # Environment template
+├── .gitignore                # Git ignore rules
+├── mcp-server/               # MCP Server implementation
+│   ├── src/
+│   │   ├── services/         # Blockchain and search services
+│   │   ├── server.rs         # HTTP server setup
+│   │   └── main.rs           # Server entry point
+│   └── tests/                # Server tests
+├── rig-client/               # RIG Client implementation
+│   ├── src/
+│   └── tests/                # Client tests
+└── scripts/                  # Build and test scripts
 ```
 
-## 🚀 Getting Started
+## Configuration Management
 
-1. **Review Documentation**: Start with `PRD.md` for complete requirements
-2. **Follow Implementation Guide**: Use `IMPLEMENTATION.md` for step-by-step development
-3. **Environment Setup**: Configure Foundry, API keys, and dependencies
-4. **Incremental Development**: Build and test each component systematically
+The project uses a centralized configuration system:
 
----
+- Environment variables for sensitive data (API keys, private keys)
+- Default values for non-sensitive configuration
+- Validation of required configuration on startup
+- Clear error messages for missing configuration
 
-**Note**: This assessment showcases modern Rust development practices, advanced AI integration, and sophisticated blockchain interaction patterns. The implementation demonstrates both technical depth and innovative problem-solving approaches expected in cutting-edge AI/blockchain development.
+## Error Handling
+
+The project follows Rust best practices for error handling:
+
+- Custom error types using `thiserror`
+- Proper error propagation with `?` operator
+- No `unwrap()` calls in production code
+- Graceful degradation when optional services are unavailable
+
+## Security Considerations
+
+- Private keys are loaded from environment variables only
+- No hardcoded API keys in source code
+- `.env` files are gitignored
+- Clear separation between test and production configuration
+
+## Development
+
+### Adding New Tools
+
+1. Add tool definition in `mcp-server/src/services/`
+2. Implement the tool logic
+3. Add tests in `mcp-server/tests/`
+4. Update documentation
+
+### Code Quality
+
+The project includes:
+- Proper error handling patterns
+- Comprehensive test coverage
+- Clear documentation
+- Consistent code formatting
+- Dependency version pinning
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Anvil not running**: Make sure anvil is started before running tests
+2. **Missing API keys**: Check your `.env` file and environment variables
+3. **Port conflicts**: Change `MCP_SERVER_PORT` in your environment
+4. **Transaction failures**: Ensure `ALICE_PRIVATE_KEY` is set correctly
+
+### Debug Mode
+
+```bash
+# Run with debug logging
+RUST_LOG=debug cargo run --bin mcp-server
+```
+
+## Contributing
+
+1. Follow Rust coding standards
+2. Add tests for new functionality
+3. Update documentation
+4. Ensure all tests pass before submitting
+
+## License
+
+[Add your license information here]

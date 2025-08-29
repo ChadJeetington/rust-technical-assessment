@@ -40,7 +40,8 @@ async fn test_blockchain_service_creation_legacy() {
             println!("⚠️  OUTPUT: BlockchainService creation failed");
             println!("📊 ERROR DETAILS: {}", e);
             println!("💡 This is expected if anvil is not running");
-            println!("   Start anvil with: anvil --fork-url https://eth-mainnet.g.alchemy.com/v2/4UjEl1ULr2lQYsGR5n7gGKd3pzgAzxKs");
+            println!("   Start anvil with: anvil --fork-url https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY");
+            println!("   Set ETH_FORK_URL environment variable or use .env file");
         }
     }
     println!("🔚 Legacy test completed\n");

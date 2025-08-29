@@ -228,8 +228,9 @@ impl BlockchainService {
         let address = NameOrAddress::from(who)
             .resolve(&self.provider)
             .await
-            .unwrap();
-        let balance = self.provider.get_balance(address).await.unwrap();
+            .map_err(|e| McpError::invalid_params(format!("Failed to resolve address '{}': {}", who_clone, e), None))?;
+        let balance = self.provider.get_balance(address).await
+            .map_err(|e| McpError::internal_error(format!("Failed to get balance: {}", e), None))?;
 
         // Convert wei to ETH for better readability
         let balance_eth = balance.to_f64().unwrap_or(0.0) / 1e18;
@@ -278,7 +279,7 @@ impl BlockchainService {
         
         // Parse amount to wei
         let amount_wei = U256::from_str(&format!("{}000000000000000000", amount.replace(".", "")))
-            .unwrap();
+            .map_err(|e| McpError::invalid_params(format!("Failed to parse amount '{}': {}", amount, e), None))?;
         
         // Create transaction request
         let tx = TransactionRequest::default()
@@ -290,7 +291,8 @@ impl BlockchainService {
         
         // Create Cast instance and send transaction
         let cast = Cast::new(self.provider.clone());
-        let pending_tx = cast.send(tx).await.unwrap();
+        let pending_tx = cast.send(tx).await
+            .map_err(|e| McpError::internal_error(format!("Failed to send transaction: {}", e), None))?;
         let tx_hash = *pending_tx.tx_hash();
         
         info!("📝 Transaction sent with hash: {}", tx_hash);
@@ -351,7 +353,8 @@ impl BlockchainService {
         
         // Create Cast instance and check if there's code at the address
         let cast = Cast::new(self.provider.clone());
-        let code = cast.code(addr, None, false).await.unwrap();
+        let code = cast.code(addr, None, false).await
+            .map_err(|e| McpError::internal_error(format!("Failed to get contract code: {}", e), None))?;
         
         // Contract is deployed if code is not "0x" (empty)
         let is_deployed = !code.is_empty() && code != "0x";
@@ -462,7 +465,7 @@ impl BlockchainService {
             if result.len() > 64 {
                 let length = u32::from_be_bytes([result[60], result[61], result[62], result[63]]) as usize;
                 if result.len() >= 64 + length {
-                    let symbol_str = String::from_utf8(result[64..64+length].to_vec()).unwrap_or("UNKNOWN".to_string());
+                    let symbol_str = String::from_utf8(result[64..64+length].to_vec()).unwrap_or_else(|_| "UNKNOWN".to_string());
                     info!("📊 Decoded symbol: {}", symbol_str);
                     symbol_str
                 } else {
@@ -614,7 +617,8 @@ impl BlockchainService {
             accounts,
         };
 
-        let json_response = serde_json::to_string_pretty(&response).unwrap();
+        let json_response = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(format!("Failed to serialize response: {}", e), None))?;
         
         Ok(CallToolResult::success(vec![Content::text(json_response)]))
     }
@@ -635,7 +639,8 @@ impl BlockchainService {
             accounts: accounts_with_keys,
         };
 
-        let json_response = serde_json::to_string_pretty(&response).unwrap();
+        let json_response = serde_json::to_string_pretty(&response)
+            .map_err(|e| McpError::internal_error(format!("Failed to serialize response: {}", e), None))?;
         
         // Add explanatory note about private key management
         let explanation = format!(
@@ -717,7 +722,7 @@ impl BlockchainService {
         let deadline = U256::from(
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .map_err(|e| McpError::internal_error(format!("Failed to get system time: {}", e), None))?
                 .as_secs() + 300
         );
         
@@ -738,7 +743,9 @@ impl BlockchainService {
         let tx = TransactionRequest::default()
             .to(router_addr)
             .value(amount_wei) // Send ETH with the transaction
-            .input(Bytes::from_str(&calldata).unwrap().into())
+            .input(Bytes::from_str(&calldata)
+                .map_err(|e| McpError::internal_error(format!("Failed to parse calldata: {}", e), None))?
+                .into())
             .from(self.alice_address);
         
         let tx = WithOtherFields::new(tx);
@@ -1050,27 +1057,35 @@ impl BlockchainService {
             ("UNI", "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984"),
         ];
 
-        let from_addr = token_addresses
+        let from_addr = if let Some((_, addr)) = token_addresses
             .iter()
             .find(|(symbol, _)| symbol.eq_ignore_ascii_case(from_token))
-            .map(|(_, addr)| Address::from_str(addr).unwrap())
-            .unwrap_or_else(|| {
-                // If not found, try to parse as address
-                Address::from_str(from_token).unwrap_or_else(|_| {
-                    panic!("Unknown token: {}. Supported tokens: ETH, WETH, USDC, USDT, DAI, LINK, UNI", from_token)
-                })
-            });
+        {
+            Address::from_str(addr)
+                .map_err(|e| McpError::internal_error(format!("Invalid from token address: {}", e), None))?
+        } else {
+            // If not found, try to parse as address
+            Address::from_str(from_token)
+                .map_err(|_| McpError::invalid_params(
+                    format!("Unknown token: {}. Supported tokens: ETH, WETH, USDC, USDT, DAI, LINK, UNI", from_token),
+                    None
+                ))?
+        };
 
-        let to_addr = token_addresses
+        let to_addr = if let Some((_, addr)) = token_addresses
             .iter()
             .find(|(symbol, _)| symbol.eq_ignore_ascii_case(to_token))
-            .map(|(_, addr)| Address::from_str(addr).unwrap())
-            .unwrap_or_else(|| {
-                // If not found, try to parse as address
-                Address::from_str(to_token).unwrap_or_else(|_| {
-                    panic!("Unknown token: {}. Supported tokens: ETH, WETH, USDC, USDT, DAI, LINK, UNI", to_token)
-                })
-            });
+        {
+            Address::from_str(addr)
+                .map_err(|e| McpError::internal_error(format!("Invalid to token address: {}", e), None))?
+        } else {
+            // If not found, try to parse as address
+            Address::from_str(to_token)
+                .map_err(|_| McpError::invalid_params(
+                    format!("Unknown token: {}. Supported tokens: ETH, WETH, USDC, USDT, DAI, LINK, UNI", to_token),
+                    None
+                ))?
+        };
 
         Ok((from_addr, to_addr))
     }

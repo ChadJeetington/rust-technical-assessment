@@ -5,8 +5,8 @@ use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
 use std::str::FromStr;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn test_usdc_balance_direct() -> Result<(), Box<dyn std::error::Error>> {
     println!("🧪 Testing USDC balance directly...");
     
     // Connect to anvil
@@ -59,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let symbol = if symbol_result.len() > 64 {
         let length = u32::from_be_bytes([symbol_result[60], symbol_result[61], symbol_result[62], symbol_result[63]]) as usize;
         if symbol_result.len() >= 64 + length {
-            String::from_utf8(symbol_result[64..64+length].to_vec()).unwrap_or("UNKNOWN".to_string())
+            String::from_utf8(symbol_result[64..64+length].to_vec()).unwrap_or_else(|_| "UNKNOWN".to_string())
         } else {
             "UNKNOWN".to_string()
         }
@@ -100,6 +100,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Account: {}", alice_address);
     println!("Token: {} ({})", usdc_address, symbol);
     println!("Balance: {} (raw: {})", formatted_balance, balance);
+    
+    // Assert that we got a valid response
+    assert!(symbol == "USDC", "Expected USDC symbol, got: {}", symbol);
+    assert_eq!(decimals, 6, "Expected 6 decimals for USDC, got: {}", decimals);
     
     Ok(())
 }

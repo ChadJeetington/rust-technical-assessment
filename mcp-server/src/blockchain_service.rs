@@ -16,6 +16,7 @@ use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
 use cast::Cast;
 use eyre::Result;
+use num_traits::cast::ToPrimitive;
 use rmcp::{
     ErrorData as McpError, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -187,15 +188,24 @@ impl BlockchainService {
         &self,
         Parameters(BalanceRequest { who }): Parameters<BalanceRequest>,
     ) -> Result<CallToolResult, McpError> {
+        let who_clone = who.clone();
         let address = NameOrAddress::from(who)
             .resolve(&self.provider)
             .await
             .unwrap();
         let balance = self.provider.get_balance(address).await.unwrap();
 
-        Ok(CallToolResult::success(vec![Content::text(
-            balance.to_string(),
-        )]))
+        // Convert wei to ETH for better readability
+        let balance_eth = balance.to_f64().unwrap_or(0.0) / 1e18;
+        
+        let response_text = format!(
+            "ETH Balance Query:\n\
+            Account: {} (resolved to {})\n\
+            Balance: {:.6} ETH ({} wei)",
+            who_clone, address, balance_eth, balance
+        );
+
+        Ok(CallToolResult::success(vec![Content::text(response_text)]))
     }
 
     /// Send ETH from Alice to another address using Cast::send

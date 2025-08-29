@@ -73,6 +73,45 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Format MCP tool responses for better readability
+fn format_response(response: &str) -> String {
+    let mut formatted = String::new();
+    
+    // Add a visual separator
+    formatted.push_str("🤖 Response:\n");
+    formatted.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    
+    // Split response into lines and format each line
+    let lines: Vec<&str> = response.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            // Add indentation for better readability
+            formatted.push_str("  ");
+            formatted.push_str(trimmed);
+            formatted.push('\n');
+            
+            // Add extra spacing after key sections
+            if trimmed.contains("Transaction Hash:") || 
+               trimmed.contains("Status:") ||
+               trimmed.contains("Balance:") ||
+               trimmed.contains("Contract Deployment Check:") ||
+               trimmed.contains("Token Balance:") {
+                formatted.push_str("\n");
+            }
+        } else if i < lines.len() - 1 {
+            // Add spacing between sections but not at the end
+            formatted.push_str("\n");
+        }
+    }
+    
+    // Add closing separator
+    formatted.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    formatted.push_str("\n");
+    
+    formatted
+}
+
 async fn start_repl(agent: BlockchainAgent) -> Result<()> {
     let mut rl = DefaultEditor::new()?;
     
@@ -124,7 +163,9 @@ async fn start_repl(agent: BlockchainAgent) -> Result<()> {
                 // Process user input with Claude
                 match agent.process_command(input).await {
                     Ok(response) => {
-                        println!("🤖 {}\n", response);
+                        // Format the response for better readability
+                        let formatted_response = format_response(&response);
+                        println!("{}", formatted_response);
                     }
                     Err(e) => {
                         error!("❌ Error processing command: {}", e);

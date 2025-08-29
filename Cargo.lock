@@ -4827,6 +4827,7 @@ dependencies = [
  "dotenv",
  "eyre",
  "hex",
+ "num-traits",
  "reqwest 0.11.27",
  "rmcp 0.6.0",
  "schemars 1.0.4",

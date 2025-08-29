@@ -1,11 +1,11 @@
-/// Blockchain Agent - Integrates Claude AI with MCP server for blockchain operations
-/// 
-/// This agent:
-/// 1. Connects to MCP server to get available tools
-/// 2. Processes natural language commands using Claude
-/// 3. Uses MCP tools to execute blockchain operations
-/// 4. Returns human-friendly responses
-use anyhow::Result;
+//! Blockchain Agent - Integrates Claude AI with MCP server for blockchain operations
+//! 
+//! This agent:
+//! 1. Connects to MCP server to get available tools
+//! 2. Processes natural language commands using Claude
+//! 3. Uses MCP tools to execute blockchain operations
+//! 4. Returns human-friendly responses
+
 use rig::completion::Prompt;
 use rig::providers::anthropic::{self, CLAUDE_3_HAIKU};
 use rig::client::CompletionClient;
@@ -26,7 +26,7 @@ pub struct BlockchainAgent {
 
 impl BlockchainAgent {
     /// Create a new blockchain agent that connects to MCP server
-    pub async fn new(anthropic_client: anthropic::Client, mcp_server_url: &str) -> Result<Self> {
+    pub async fn new(anthropic_client: anthropic::Client, mcp_server_url: &str) -> crate::Result<Self> {
         info!("🔧 Initializing Blockchain Agent with Claude and MCP");
         
         // Initialize MCP client connection
@@ -45,7 +45,7 @@ impl BlockchainAgent {
         let mcp_client = mcp_client_info.serve(mcp_transport).await.inspect_err(|e| {
             error!("❌ MCP client connection failed: {:?}", e);
         }).map_err(|e| {
-            anyhow::anyhow!("Failed to connect to MCP server: {}", e)
+            crate::ClientError::McpConnection(format!("Failed to connect to MCP server: {}", e))
         })?;
 
         // Get available tools from MCP server
@@ -53,7 +53,7 @@ impl BlockchainAgent {
         let tools: Vec<Tool> = mcp_client.list_tools(Default::default()).await
             .map_err(|e| {
                 error!("❌ Failed to fetch tools from MCP server: {:?}", e);
-                anyhow::anyhow!("Failed to fetch tools from MCP server: {}", e)
+                crate::ClientError::McpConnection(format!("Failed to fetch tools from MCP server: {}", e))
             })?
             .tools;
         
@@ -99,7 +99,7 @@ impl BlockchainAgent {
     }
 
     /// Process a natural language command using Claude with MCP tools
-    pub async fn process_command(&self, user_input: &str) -> Result<String> {
+    pub async fn process_command(&self, user_input: &str) -> crate::Result<String> {
         debug!("📝 Processing command: {}", user_input);
         
         // Use Claude with MCP tools to process the command
@@ -110,7 +110,7 @@ impl BlockchainAgent {
             .await
             .map_err(|e| {
                 error!("❌ Claude processing failed: {}", e);
-                anyhow::anyhow!("Failed to process command with Claude: {}", e)
+                crate::ClientError::ClaudeApi(format!("Failed to process command with Claude: {}", e))
             })?;
             
         debug!("🤖 Claude response: {}", response);
@@ -118,10 +118,8 @@ impl BlockchainAgent {
         Ok(response)
     }
 
-
-
     /// Test the MCP connection and available tools
-    pub async fn test_connection(&self) -> Result<String> {
+    pub async fn test_connection(&self) -> crate::Result<String> {
         info!("🧪 Testing MCP connection and tools...");
         
         // Test with a simple command that should use MCP tools

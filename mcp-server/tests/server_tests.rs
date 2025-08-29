@@ -5,6 +5,8 @@
 //! or manual testing approaches.
 
 use mcp_server::blockchain_service::BlockchainService;
+use alloy_primitives::Address;
+use std::str::FromStr;
 
 #[tokio::test]
 async fn test_blockchain_service_creation() {
@@ -345,8 +347,8 @@ async fn test_usdc_token_balance_on_forked_mainnet() {
     assert!(json.contains(alice_address));
     
     // Validate addresses
-    let usdc_addr = alloy_primitives::Address::from_str(usdc_address).unwrap();
-    let alice_addr = alloy_primitives::Address::from_str(alice_address).unwrap();
+    let usdc_addr = Address::from_str(usdc_address).unwrap();
+    let alice_addr = Address::from_str(alice_address).unwrap();
     println!("✅ Address validation: USDC={}, Alice={}", usdc_addr, alice_addr);
     
     // Try to create blockchain service and test actual balance query
@@ -364,7 +366,7 @@ async fn test_usdc_token_balance_on_forked_mainnet() {
                 "account_address": alice_address
             });
             
-            let result = service.tool_router().call_tool(tool_name, args).await;
+            let result = service.tool_router.call_tool(tool_name, args).await;
             
             match result {
                 Ok(call_result) => {
@@ -374,7 +376,7 @@ async fn test_usdc_token_balance_on_forked_mainnet() {
                     // Extract the content from the response
                     if let Some(content) = call_result.content.first() {
                         match content {
-                            rmcp::model::Content::Text { text } => {
+                            rmcp::model::Content::Text { text, .. } => {
                                 println!("📝 Balance Response: {}", text);
                                 
                                 // Validate the response contains expected information
@@ -447,14 +449,14 @@ async fn test_multiple_usdc_balance_queries() {
                     "account_address": address
                 });
                 
-                let result = service.tool_router().call_tool(tool_name, args).await;
+                let result = service.tool_router.call_tool(tool_name, args).await;
                 
                 match result {
                     Ok(call_result) => {
                         println!("✅ {} USDC balance query successful", name);
                         if let Some(content) = call_result.content.first() {
                             match content {
-                                rmcp::model::Content::Text { text } => {
+                                rmcp::model::Content::Text { text, .. } => {
                                     println!("📊 {} Balance: {}", name, text.lines().next().unwrap_or("No balance info"));
                                 }
                                 _ => println!("⚠️  Unexpected content type for {}", name),

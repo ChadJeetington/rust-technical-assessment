@@ -5,7 +5,6 @@
 /// 2. Processes natural language commands using Claude
 /// 3. Uses MCP tools to execute blockchain operations
 /// 4. Returns human-friendly responses
-
 use anyhow::Result;
 use rig::completion::Prompt;
 use rig::providers::anthropic::{self, CLAUDE_3_HAIKU};

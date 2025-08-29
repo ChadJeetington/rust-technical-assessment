@@ -112,7 +112,7 @@ impl BlockchainService {
     /// Create a new blockchain service instance
     pub async fn new() -> Result<Self> {
         // Load environment variables from .env file if it exists
-        if let Err(_) = dotenv::dotenv() {
+        if dotenv::dotenv().is_err() {
             info!("No .env file found, using system environment variables only");
         } else {
             info!("Loaded environment variables from .env file");
@@ -519,17 +519,15 @@ impl BlockchainService {
         ];
         
         for (name, index) in known_accounts.iter() {
-            if lowercase_input == *name {
-                if let Some(account) = self.anvil_accounts.get(*index) {
-                    if let Ok(addr) = Address::from_str(&account.address) {
+            if lowercase_input == *name
+                && let Some(account) = self.anvil_accounts.get(*index)
+                    && let Ok(addr) = Address::from_str(&account.address) {
                         return Ok(ValidatedAddress {
                             address: account.address.clone(),
                             resolved_address: addr,
                             address_type: format!("Anvil Account {}", index),
                         });
                     }
-                }
-            }
         }
         
         // Step 4: If nothing matches, return validation error

@@ -97,17 +97,17 @@ fn format_response(response: &str) -> String {
                trimmed.contains("Balance:") ||
                trimmed.contains("Contract Deployment Check:") ||
                trimmed.contains("Token Balance:") {
-                formatted.push_str("\n");
+                formatted.push('\n');
             }
         } else if i < lines.len() - 1 {
             // Add spacing between sections but not at the end
-            formatted.push_str("\n");
+            formatted.push('\n');
         }
     }
     
     // Add closing separator
     formatted.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    formatted.push_str("\n");
+    formatted.push('\n');
     
     formatted
 }

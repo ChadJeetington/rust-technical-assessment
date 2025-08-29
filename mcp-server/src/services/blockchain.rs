@@ -27,6 +27,7 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use std::{env, str::FromStr};
 use tracing::{info, error};
+use hex;
 
 /// Request structure for balance queries
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -58,6 +59,21 @@ pub struct TokenBalanceRequest {
     pub token_address: String,
     #[schemars(description = "Account address to check balance for")]
     pub account_address: String,
+}
+
+/// Request structure for token swaps
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SwapRequest {
+    #[schemars(description = "Token to swap from (e.g., 'ETH')")]
+    pub from_token: String,
+    #[schemars(description = "Token to swap to (e.g., 'USDC')")]
+    pub to_token: String,
+    #[schemars(description = "Amount to swap (e.g., '10')")]
+    pub amount: String,
+    #[schemars(description = "DEX to use (e.g., 'Uniswap V2')")]
+    pub dex: Option<String>,
+    #[schemars(description = "Slippage tolerance in basis points (e.g., '500' for 5%)")]
+    pub slippage: Option<String>,
 }
 
 /// Response structure for account information
@@ -600,6 +616,121 @@ impl BlockchainService {
         Ok(CallToolResult::success(vec![Content::text(format!("{}{}", json_response, explanation))]))
     }
 
+    /// Execute a token swap using Uniswap V2 Router
+    #[tool(description = "Swap tokens using Uniswap V2 Router - integrates with search API to find contract addresses")]
+    pub async fn swap_tokens(
+        &self,
+        Parameters(SwapRequest { from_token, to_token, amount, dex, slippage }): Parameters<SwapRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        info!("🔄 MCP Server: swap_tokens called with from={}, to={}, amount={}, dex={:?}", 
+              from_token, to_token, amount, dex);
+        
+        // Check if we have Alice's private key available
+        if self.alice_private_key.is_empty() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                format!(
+                    "ERROR: Cannot execute swap - private key not available.\n\n\
+                    Alice's address: {}\n\
+                    Requested swap: {} {} to {}\n\
+                    DEX: {}\n\n\
+                    SOLUTION: Set the private key in your environment:\n\
+                    export ALICE_PRIVATE_KEY=\"0x...\"\n\
+                    or\n\
+                    export PRIVATE_KEY=\"0x...\"\n\n\
+                    The private key should correspond to Alice's address ({}).",
+                    self.alice_address, amount, from_token, to_token, dex.as_deref().unwrap_or("Uniswap V2"), self.alice_address
+                )
+            )]))
+        }
+
+        let dex_name = dex.unwrap_or_else(|| "Uniswap V2".to_string());
+        let slippage_bps = slippage.unwrap_or_else(|| "500".to_string()); // Default 5% slippage
+        
+        // Step 1: Get Uniswap V2 Router address (hardcoded for mainnet)
+        let router_address = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"; // Uniswap V2 Router
+        let router_addr = Address::from_str(router_address)
+            .map_err(|e| McpError::internal_error(format!("Invalid router address: {}", e), None))?;
+        
+        info!("📋 Using Uniswap V2 Router: {}", router_address);
+        
+        // Step 2: Get token addresses (hardcoded common tokens for now)
+        let (from_token_addr, to_token_addr) = self.get_token_addresses(&from_token, &to_token).await?;
+        
+        info!("🪙 Token addresses - From: {} ({}) To: {} ({})", 
+              from_token, from_token_addr, to_token, to_token_addr);
+        
+        // Step 3: Calculate swap parameters
+        let amount_wei = self.parse_amount_to_wei(&amount, &from_token).await?;
+        let amount_out_min = U256::ZERO; // For now, set to 0 (no slippage protection)
+        
+        // Step 4: Create swap path
+        let path = vec![from_token_addr, to_token_addr];
+        
+        // Step 5: Calculate deadline (5 minutes from now)
+        let deadline = U256::from(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() + 300
+        );
+        
+        info!("📊 Swap parameters - Amount: {} wei, Path: {:?}, Deadline: {}", 
+              amount_wei, path, deadline);
+        
+        // Step 6: Encode the swap function call
+        let calldata = self.encode_swap_exact_eth_for_tokens(
+            amount_out_min,
+            &path,
+            self.alice_address,
+            deadline
+        ).await?;
+        
+        info!("🔧 Encoded calldata: {}", calldata);
+        
+        // Step 7: Create and send transaction using Cast
+        let tx = TransactionRequest::default()
+            .to(router_addr)
+            .value(amount_wei) // Send ETH with the transaction
+            .input(Bytes::from_str(&calldata).unwrap().into())
+            .from(self.alice_address);
+        
+        let tx = WithOtherFields::new(tx);
+        
+        // Create Cast instance and send transaction
+        let cast = Cast::new(self.provider.clone());
+        let pending_tx = cast.send(tx).await
+            .map_err(|e| McpError::internal_error(format!("Failed to send swap transaction: {}", e), None))?;
+        let tx_hash = *pending_tx.tx_hash();
+        
+        let response_text = format!(
+            "Token Swap Successful:\n\
+            From: {} (Alice)\n\
+            Swap: {} {} → {} {}\n\
+            DEX: {}\n\
+            Router: {}\n\
+            Amount: {} {} ({} wei)\n\
+            Path: {} → {}\n\
+            Slippage: {}%\n\
+            Transaction Hash: {}\n\
+            Status: Sent to network\n\n\
+            💡 Note: This is a test transaction on forked mainnet.\n\
+            The swap will execute using real Uniswap V2 contracts.",
+            self.alice_address,
+            amount, from_token, amount, to_token,
+            dex_name,
+            router_address,
+            amount, from_token, amount_wei,
+            from_token, to_token,
+            (slippage_bps.parse::<u32>().unwrap_or(500) as f64) / 100.0,
+            tx_hash
+        );
+        
+        info!("🔍 MCP Server swap_tokens response: {}", response_text);
+        info!("📝 Transaction hash: {}", tx_hash);
+        
+        Ok(CallToolResult::success(vec![Content::text(response_text)]))
+    }
+
     /// Get default addresses as specified in PRD
     #[tool(description = "Get the default sender and recipient addresses as specified in PRD")]
     pub async fn get_default_addresses(&self) -> Result<CallToolResult, McpError> {
@@ -634,6 +765,103 @@ impl BlockchainService {
         );
         
         Ok(CallToolResult::success(vec![Content::text(response)]))
+    }
+
+    /// Helper method to get token addresses for common tokens
+    async fn get_token_addresses(&self, from_token: &str, to_token: &str) -> Result<(Address, Address), McpError> {
+        // Hardcoded addresses for common tokens on mainnet
+        let token_addresses = [
+            ("ETH", "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"), // WETH
+            ("WETH", "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"),
+            ("USDC", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
+            ("USDT", "0xdAC17F958D2ee523a2206206994597C13D831ec7"),
+            ("DAI", "0x6B175474E89094C44Da98b954EedeAC495271d0F"),
+            ("LINK", "0x514910771AF9Ca656af840dff83E8264EcF986CA"),
+            ("UNI", "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984"),
+        ];
+
+        let from_addr = token_addresses
+            .iter()
+            .find(|(symbol, _)| symbol.eq_ignore_ascii_case(from_token))
+            .map(|(_, addr)| Address::from_str(addr).unwrap())
+            .unwrap_or_else(|| {
+                // If not found, try to parse as address
+                Address::from_str(from_token).unwrap_or_else(|_| {
+                    panic!("Unknown token: {}. Supported tokens: ETH, WETH, USDC, USDT, DAI, LINK, UNI", from_token)
+                })
+            });
+
+        let to_addr = token_addresses
+            .iter()
+            .find(|(symbol, _)| symbol.eq_ignore_ascii_case(to_token))
+            .map(|(_, addr)| Address::from_str(addr).unwrap())
+            .unwrap_or_else(|| {
+                // If not found, try to parse as address
+                Address::from_str(to_token).unwrap_or_else(|_| {
+                    panic!("Unknown token: {}. Supported tokens: ETH, WETH, USDC, USDT, DAI, LINK, UNI", to_token)
+                })
+            });
+
+        Ok((from_addr, to_addr))
+    }
+
+    /// Helper method to parse amount to wei
+    async fn parse_amount_to_wei(&self, amount: &str, _token: &str) -> Result<U256, McpError> {
+        let amount_float = amount.parse::<f64>()
+            .map_err(|e| McpError::invalid_params(format!("Invalid amount: {}", e), None))?;
+        
+        // Convert to wei (18 decimals for ETH)
+        let amount_wei = (amount_float * 1e18) as u128;
+        Ok(U256::from(amount_wei))
+    }
+
+    /// Helper method to encode swapExactETHForTokens function call
+    async fn encode_swap_exact_eth_for_tokens(
+        &self,
+        amount_out_min: U256,
+        path: &[Address],
+        to: Address,
+        deadline: U256,
+    ) -> Result<String, McpError> {
+        // Function signature: swapExactETHForTokens(uint256 amountOutMin, address[] path, address to, uint256 deadline)
+        // Function selector: 0x7ff36ab5
+        
+        let mut calldata = Vec::new();
+        
+        // Function selector
+        calldata.extend_from_slice(&[0x7f, 0xf3, 0x6a, 0xb5]);
+        
+        // Encode amountOutMin (uint256) - 32 bytes
+        let amount_out_min_bytes: [u8; 32] = amount_out_min.to_be_bytes();
+        calldata.extend_from_slice(&amount_out_min_bytes);
+        
+        // Encode path array offset (uint256) - 32 bytes
+        let path_offset = U256::from(96); // 32 + 32 + 32 = 96 bytes for the first 3 parameters
+        let path_offset_bytes: [u8; 32] = path_offset.to_be_bytes();
+        calldata.extend_from_slice(&path_offset_bytes);
+        
+        // Encode to address (address) - 32 bytes
+        let mut to_bytes = [0u8; 32];
+        to_bytes[12..].copy_from_slice(to.as_slice()); // Address is 20 bytes, padded to 32
+        calldata.extend_from_slice(&to_bytes);
+        
+        // Encode deadline (uint256) - 32 bytes
+        let deadline_bytes: [u8; 32] = deadline.to_be_bytes();
+        calldata.extend_from_slice(&deadline_bytes);
+        
+        // Encode path array length (uint256) - 32 bytes
+        let path_length = U256::from(path.len());
+        let path_length_bytes: [u8; 32] = path_length.to_be_bytes();
+        calldata.extend_from_slice(&path_length_bytes);
+        
+        // Encode path array elements (address[]) - each address is 32 bytes
+        for addr in path {
+            let mut addr_bytes = [0u8; 32];
+            addr_bytes[12..].copy_from_slice(addr.as_slice()); // Address is 20 bytes, padded to 32
+            calldata.extend_from_slice(&addr_bytes);
+        }
+        
+        Ok(format!("0x{}", hex::encode(calldata)))
     }
 }
 

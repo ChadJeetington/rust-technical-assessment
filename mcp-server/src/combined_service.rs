@@ -95,6 +95,14 @@ impl CombinedService {
         self.blockchain.get_default_addresses().await
     }
 
+    #[tool(description = "Swap tokens using Uniswap V2 Router - integrates with search API to find contract addresses")]
+    async fn swap_tokens(
+        &self,
+        Parameters(request): Parameters<crate::services::blockchain::SwapRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        self.blockchain.swap_tokens(Parameters(request)).await
+    }
+
     // Search tools - delegate to search service
     #[tool(description = "Search the web using Brave Search API")]
     async fn web_search(

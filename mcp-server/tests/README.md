@@ -14,6 +14,7 @@ The tests have been split into the following modular files:
 - **`account_loading_tests.rs`** - Tests for dynamic account loading functionality
 - **`token_balance_tests.rs`** - Tests for USDC and other ERC-20 token balance queries
 - **`brave_api_tests.rs`** - Tests for Brave Search API integration and swap intent functionality
+- **`swap_tests.rs`** - Tests for token swap functionality using Uniswap V2 Router
 
 ### Integration and Legacy Files
 
@@ -48,6 +49,9 @@ cargo test --test token_balance_tests
 
 # Brave API tests
 cargo test --test brave_api_tests
+
+# Swap tests
+cargo test --test swap_tests
 
 # Integration tests
 cargo test --test integration_tests
@@ -100,6 +104,12 @@ cargo test --test service_creation_tests -- --nocapture
 - Tests swap intent request/response serialization
 - Tests actual web search functionality
 - Tests swap intent functionality with search integration
+
+### Swap Tests
+- Tests SwapRequest serialization and deserialization
+- Tests actual swap functionality using Uniswap V2 Router
+- Tests token address resolution for common tokens
+- Tests calldata encoding for swap functions
 
 ## Prerequisites
 

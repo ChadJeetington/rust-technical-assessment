@@ -12,7 +12,7 @@ use anyhow::Result;
 use reqwest::Client;
 use rmcp::{
     ErrorData as McpError,
-    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
+    handler::server::wrapper::Parameters,
     model::{CallToolResult, Content},
     tool, tool_router,
 };
@@ -145,8 +145,6 @@ pub struct SearchService {
     api_key: String,
     /// Base URL for Brave Search API
     base_url: String,
-    /// Tool router for MCP
-    tool_router: ToolRouter<Self>,
 }
 
 #[tool_router]
@@ -166,7 +164,6 @@ impl SearchService {
             client,
             api_key,
             base_url: "https://api.search.brave.com/res/v1/web/search".to_string(),
-            tool_router: Self::tool_router(),
         })
     }
 

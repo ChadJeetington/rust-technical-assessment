@@ -18,10 +18,16 @@ pub struct Config {
     pub mcp_server: String,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self::parse()
+    }
+}
+
 impl Config {
     /// Create a new configuration from CLI arguments
     pub fn new() -> Self {
-        Self::parse()
+        Self::default()
     }
 
     /// Get the log level based on verbose flag

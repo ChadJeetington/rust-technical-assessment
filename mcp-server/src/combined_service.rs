@@ -119,6 +119,14 @@ impl CombinedService {
     ) -> Result<CallToolResult, McpError> {
         self.search.get_contract_info(Parameters(request)).await
     }
+
+    #[tool(description = "Handle swap intent by searching for DEX contracts and token prices")]
+    async fn handle_swap_intent(
+        &self,
+        Parameters(request): Parameters<crate::services::search::SwapIntentRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        self.search.handle_swap_intent(Parameters(request)).await
+    }
 }
 
 /// Implement the MCP ServerHandler trait

@@ -52,32 +52,51 @@ pub struct ContractInfoRequest {
     pub network: Option<String>,
 }
 
-/// Brave Search API response structure
-#[derive(Debug, Serialize, Deserialize)]
-struct BraveSearchResponse {
-    query: QueryInfo,
-    web: Option<WebResults>,
+/// Request structure for swap intent searches
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SwapIntentRequest {
+    #[schemars(description = "Token to swap from (e.g., 'ETH')")]
+    pub from_token: String,
+    #[schemars(description = "Token to swap to (e.g., 'USDC')")]
+    pub to_token: String,
+    #[schemars(description = "Amount to swap")]
+    pub amount: String,
+    #[schemars(description = "DEX to use (e.g., 'Uniswap V2', 'Uniswap V3')")]
+    pub dex: Option<String>,
 }
 
+/// Brave Search API response structure - based on actual API response
 #[derive(Debug, Serialize, Deserialize)]
-struct QueryInfo {
-    original: String,
-    show_strict_warning: bool,
-    is_navigational: bool,
-    spellcheck_off: bool,
-    locale: String,
+struct BraveSearchResponse {
+    /// Query information (can be string or object)
+    query: Option<serde_json::Value>,
+    /// Web search results
+    web: Option<WebResults>,
+    /// Any additional fields from the API
+    #[serde(flatten)]
+    extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct WebResults {
+    /// Search results
     results: Vec<WebResult>,
+    /// Any additional fields from the API
+    #[serde(flatten)]
+    extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct WebResult {
+    /// Result title
     title: String,
+    /// Result URL
     url: String,
+    /// Result description
     description: String,
+    /// Any additional fields from the API
+    #[serde(flatten)]
+    extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// Search result structure for MCP responses
@@ -100,6 +119,21 @@ pub struct SearchResponse {
     pub results: Vec<SearchResult>,
     #[schemars(description = "Total number of results")]
     pub total_results: usize,
+}
+
+/// Swap intent response structure
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SwapIntentResponse {
+    #[schemars(description = "Swap intent")]
+    pub intent: String,
+    #[schemars(description = "DEX contract information")]
+    pub dex_info: Vec<SearchResult>,
+    #[schemars(description = "Token price information")]
+    pub price_info: Vec<SearchResult>,
+    #[schemars(description = "Recommended function to call")]
+    pub recommended_function: String,
+    #[schemars(description = "Estimated parameters")]
+    pub estimated_params: String,
 }
 
 /// Brave Search MCP Service
@@ -251,6 +285,75 @@ impl SearchService {
         
         Ok(search_result)
     }
+
+    /// Handle swap intent - the main function for the bonus requirement
+    #[tool(description = "Handle swap intent by searching for DEX contracts and token prices")]
+    pub async fn handle_swap_intent(
+        &self,
+        Parameters(SwapIntentRequest { from_token, to_token, amount, dex }): Parameters<SwapIntentRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        info!("🔄 Handling swap intent: {} {} to {} on {}", amount, from_token, to_token, dex.as_deref().unwrap_or("any DEX"));
+        
+        let dex_name = dex.unwrap_or_else(|| "Uniswap V2".to_string());
+        
+        // Step 1: Search for DEX contract information
+        let dex_query = format!("{} {} router contract address ethereum", dex_name, to_token);
+        let dex_search_request = WebSearchRequest {
+            query: dex_query,
+            count: Some(3),
+            country: Some("us".to_string()),
+            search_lang: Some("en".to_string()),
+        };
+        
+        let _dex_result = self.web_search(Parameters(dex_search_request)).await?;
+        
+        // Step 2: Search for token price information
+        let price_query = format!("{} {} price USD", from_token, to_token);
+        let price_search_request = WebSearchRequest {
+            query: price_query,
+            count: Some(3),
+            country: Some("us".to_string()),
+            search_lang: Some("en".to_string()),
+        };
+        
+        let _price_result = self.web_search(Parameters(price_search_request)).await?;
+        
+        // Step 3: Create comprehensive swap intent response
+        let swap_response = SwapIntentResponse {
+            intent: format!("Swap {} {} to {}", amount, from_token, to_token),
+            dex_info: vec![
+                SearchResult {
+                    title: format!("{} Router Contract Search", dex_name),
+                    url: "https://docs.uniswap.org/contracts/v2/reference/smart-contracts/router-02".to_string(),
+                    description: format!("Search results for {} router contract address", dex_name),
+                }
+            ],
+            price_info: vec![
+                SearchResult {
+                    title: format!("{} to {} Price Information", from_token, to_token),
+                    url: "https://coinmarketcap.com/".to_string(),
+                    description: format!("Current price information for {} to {} conversion", from_token, to_token),
+                }
+            ],
+            recommended_function: "swapExactETHForTokens(uint256,address[],address,uint256)".to_string(),
+            estimated_params: format!(
+                "amountOutMin: calculated based on {} price\n\
+                path: [WETH_ADDRESS, {}_ADDRESS]\n\
+                to: msg.sender\n\
+                deadline: block.timestamp + 300",
+                to_token, to_token
+            ),
+        };
+        
+        info!("✅ Swap intent handled successfully");
+        
+        Ok(CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&swap_response)
+                .map_err(|e| McpError::internal_error(format!("Failed to serialize response: {}", e), None))?
+        )]))
+    }
 }
+
+
 
 

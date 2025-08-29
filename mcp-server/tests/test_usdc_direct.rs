@@ -1,5 +1,5 @@
 use alloy_primitives::{Address, U256, Bytes};
-use alloy_provider::{Provider, ProviderBuilder, RootProvider};
+use alloy_provider::{Provider, ProviderBuilder};
 use alloy_network::AnyNetwork;
 use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;

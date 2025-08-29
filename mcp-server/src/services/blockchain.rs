@@ -195,7 +195,7 @@ impl BlockchainService {
 
     /// Get the balance of an account in wei - Following PRD Example Pattern
     #[tool(description = "Get the balance of an account in wei")]
-    async fn balance(
+    pub async fn balance(
         &self,
         Parameters(BalanceRequest { who }): Parameters<BalanceRequest>,
     ) -> Result<CallToolResult, McpError> {
@@ -221,7 +221,7 @@ impl BlockchainService {
 
     /// Send ETH from Alice to another address using Cast::send
     #[tool(description = "Send ETH from Alice to another address - NOTE: Requires private key access")]
-    async fn send_eth(
+    pub async fn send_eth(
         &self,
         Parameters(TransferRequest { to, amount }): Parameters<TransferRequest>,
     ) -> Result<CallToolResult, McpError> {
@@ -290,7 +290,7 @@ impl BlockchainService {
 
     /// Check if a contract is deployed using Cast::code
     #[tool(description = "Check if a contract is deployed at the specified address")]
-    async fn is_contract_deployed(
+    pub async fn is_contract_deployed(
         &self,
         Parameters(ContractDeploymentRequest { address }): Parameters<ContractDeploymentRequest>,
     ) -> Result<CallToolResult, McpError> {
@@ -321,7 +321,7 @@ impl BlockchainService {
 
     /// Get ERC-20 token balance for an account
     #[tool(description = "Get ERC-20 token balance (e.g., USDC) for an account")]
-    async fn token_balance(
+    pub async fn token_balance(
         &self,
         Parameters(TokenBalanceRequest { token_address, account_address }): Parameters<TokenBalanceRequest>,
     ) -> Result<CallToolResult, McpError> {
@@ -547,7 +547,7 @@ impl BlockchainService {
 
     /// Get list of all available anvil accounts (addresses only)
     #[tool(description = "Get list of all available anvil accounts with their addresses")]
-    async fn get_accounts(&self) -> Result<CallToolResult, McpError> {
+    pub async fn get_accounts(&self) -> Result<CallToolResult, McpError> {
         // Create account list without private keys for security
         let accounts: Vec<AccountInfo> = self.anvil_accounts
             .iter()
@@ -570,7 +570,7 @@ impl BlockchainService {
 
     /// Get list of all available anvil accounts with private key status
     #[tool(description = "Get list of all available anvil accounts - Private keys loaded from environment")]
-    async fn get_private_keys(&self) -> Result<CallToolResult, McpError> {
+    pub async fn get_private_keys(&self) -> Result<CallToolResult, McpError> {
         // Clone accounts and add private key info where available
         let mut accounts_with_keys = self.anvil_accounts.clone();
         
@@ -602,7 +602,7 @@ impl BlockchainService {
 
     /// Get default addresses as specified in PRD
     #[tool(description = "Get the default sender and recipient addresses as specified in PRD")]
-    async fn get_default_addresses(&self) -> Result<CallToolResult, McpError> {
+    pub async fn get_default_addresses(&self) -> Result<CallToolResult, McpError> {
         let response = format!(
             "Default Addresses (PRD Configuration):\n\n\
             👤 Alice (Account 0 - Default Sender):\n\

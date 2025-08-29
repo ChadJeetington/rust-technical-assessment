@@ -32,6 +32,9 @@ thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+# Async traits
+async-trait = "0.1"
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -12,7 +12,7 @@ An AI agent system that can interact with Ethereum blockchain using natural lang
 User   ◄───► │ • CLI REPL      │                    │ • Foundry - Cast │
 Claude ◄───► │ • LLM API Key   │                    │ • Tx Generation  │
              │ • User Input    │                    │ • State Fork     │
-             │ • Response      │                    │ • Anthropic SDK  │
+             │ • Response      │                    │ • Anthr MCP SDK  │
              └─────────────────┘                    └──────────────────┘
                       │                                       │
                       │                                       │

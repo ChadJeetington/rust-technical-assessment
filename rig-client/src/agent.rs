@@ -118,6 +118,9 @@ impl BlockchainAgent {
     pub async fn process_command(&self, user_input: &str) -> crate::Result<String> {
         debug!("📝 Processing command: {}", user_input);
         
+        // Check if this is a general question that doesn't require tool calling
+        let is_general_question = self.is_general_question(user_input);
+        
         // Check if this looks like a Uniswap documentation query
         let is_uniswap_query = user_input.to_lowercase().contains("uniswap") || 
                               user_input.to_lowercase().contains("swap") ||
@@ -141,6 +144,11 @@ impl BlockchainAgent {
             user_input.to_string()
         };
         
+        // For general questions, use a simpler approach without tool calling
+        if is_general_question {
+            return self.handle_general_question(user_input).await;
+        }
+        
         // Use Claude with MCP tools to process the command
         // Claude will automatically call the appropriate MCP tools based on the user's request
         let response = self.claude_agent
@@ -153,6 +161,173 @@ impl BlockchainAgent {
             })?;
             
         debug!("🤖 Claude response: {}", response);
+        
+        Ok(response)
+    }
+
+    /// Check if the input is a general question that doesn't require tool calling
+    fn is_general_question(&self, input: &str) -> bool {
+        let lower_input = input.to_lowercase();
+        
+        // General question patterns
+        let general_patterns = [
+            "what tools do you have",
+            "what can you do",
+            "how do you work",
+            "tell me about yourself",
+            "what are your capabilities",
+            "what are you",
+            "who are you",
+            "explain yourself",
+            "help",
+            "what is this",
+            "how does this work",
+            "what is mcp",
+            "what is rag",
+            "what is uniswap",
+            "explain",
+            "describe",
+            "what does",
+            "how to",
+            "can you",
+            "do you",
+            "are you",
+        ];
+        
+        general_patterns.iter().any(|pattern| lower_input.contains(pattern))
+    }
+
+    /// Handle general questions without tool calling
+    async fn handle_general_question(&self, input: &str) -> crate::Result<String> {
+        let lower_input = input.to_lowercase();
+        
+        let response = if lower_input.contains("what tools") || lower_input.contains("capabilities") {
+            r#"
+I'm an Ethereum blockchain assistant with access to several powerful tools:
+
+🔧 **Blockchain Tools:**
+• Send ETH transactions between addresses
+• Check ETH and token balances for any address
+• Verify if smart contracts are deployed at specific addresses
+• Get lists of available accounts and their private keys
+• Get default addresses configuration
+
+🌐 **Web Search:**
+• Search the web for current information and real-time data
+
+📚 **RAG System:**
+• Access to comprehensive Uniswap documentation
+• Contract source code and interfaces
+• Slippage calculation guides and best practices
+
+💡 **Key Features:**
+• Default accounts: Alice (sender) and Bob (recipient)
+• Automatic RAG integration for Uniswap questions
+• Natural language processing for blockchain operations
+• Integration with Foundry for Ethereum interactions
+
+Try commands like:
+• "send 1 ETH to Bob"
+• "How much USDC does Alice have?"
+• "Is Uniswap V2 Router deployed?"
+• "Search for current Ethereum price"
+"#.trim().to_string()
+        } else if lower_input.contains("how do you work") || lower_input.contains("what are you") {
+            r#"
+I'm an AI assistant built with the RIG framework that connects to an MCP (Model Context Protocol) server to interact with the Ethereum blockchain. Here's how I work:
+
+🤖 **My Architecture:**
+• I use Claude 3 Haiku for natural language understanding
+• I connect to an MCP server that provides blockchain tools
+• The MCP server uses Foundry Cast to interact with Ethereum
+• I have a RAG system for Uniswap documentation
+
+🔄 **How I Process Requests:**
+1. You ask me a question in natural language
+2. I understand your intent and determine if I need to call tools
+3. For blockchain operations, I call the appropriate MCP tools
+4. For general questions, I answer directly using my knowledge
+5. I format the response clearly with all relevant information
+
+🔗 **Key Technologies:**
+• RIG Core Framework for AI provider abstraction
+• Anthropic MCP SDK for tool calling protocol
+• Foundry for Ethereum blockchain operations
+• Local vector embeddings for documentation search
+
+I'm designed to make blockchain interactions as simple as having a conversation!
+"#.trim().to_string()
+        } else if lower_input.contains("what is mcp") {
+            r#"
+MCP stands for **Model Context Protocol**, which is a protocol created by Anthropic for connecting AI models to external tools and data sources.
+
+🔧 **What MCP Does:**
+• Allows AI models to call external tools and APIs
+• Provides a standardized way for AI to interact with systems
+• Enables real-time data access and tool execution
+• Maintains security and control over what tools AI can access
+
+🔄 **How MCP Works in This System:**
+• I (the AI client) connect to an MCP server
+• The MCP server provides blockchain tools (Foundry Cast integration)
+• When you ask me to send ETH or check balances, I call these tools
+• The tools execute the actual blockchain operations
+• I receive the results and present them to you
+
+💡 **Benefits:**
+• Secure: Tools run on the server, not in the AI
+• Flexible: Easy to add new tools and capabilities
+• Standardized: Works with any MCP-compatible AI
+• Real-time: Direct access to live blockchain data
+
+This is why I can actually perform real blockchain operations instead of just talking about them!
+"#.trim().to_string()
+        } else if lower_input.contains("what is rag") {
+            r#"
+RAG stands for **Retrieval-Augmented Generation**, which is a technique that enhances AI responses with relevant external information.
+
+🔍 **How RAG Works:**
+• Documents are converted into vector embeddings (mathematical representations)
+• When you ask a question, I search for the most relevant documents
+• I use this retrieved information to provide more accurate and detailed answers
+• This gives me access to up-to-date, specific information
+
+📚 **RAG in This System:**
+• I have access to Uniswap documentation and contract source code
+• When you ask about Uniswap functions, I automatically retrieve relevant docs
+• This helps me provide accurate, detailed answers about Uniswap
+• I can explain specific functions, parameters, and best practices
+
+💡 **Benefits:**
+• More accurate: Based on actual documentation, not just training data
+• Up-to-date: Can include recent changes and new features
+• Detailed: Access to specific code examples and technical details
+• Contextual: Provides relevant information for your specific question
+
+This is why I can give you detailed, accurate information about Uniswap functions and contracts!
+"#.trim().to_string()
+        } else {
+            r#"
+I'm an Ethereum blockchain assistant that can help you with various blockchain operations and answer questions about Ethereum, Uniswap, and related technologies.
+
+🔧 **What I Can Do:**
+• Send ETH transactions between addresses
+• Check token balances (ETH, USDC, etc.)
+• Verify smart contract deployment
+• Search the web for current information
+• Answer questions about Uniswap and blockchain technology
+• Provide detailed documentation and code examples
+
+💡 **Try These Commands:**
+• "send 1 ETH to Bob"
+• "How much USDC does Alice have?"
+• "Is Uniswap V2 Router deployed?"
+• "What is the current Ethereum price?"
+• "Explain how Uniswap V2 works"
+
+I'm here to make blockchain interactions simple and accessible through natural language!
+"#.trim().to_string()
+        };
         
         Ok(response)
     }
@@ -315,6 +490,19 @@ IMPORTANT RULES:
 5. When users say "send X ETH from Alice to Bob" - use Alice as sender
 6. When users say "send X ETH" without specifying sender - Alice is the sender
 
+CONVERSATION MODES:
+You can handle two types of interactions:
+
+1. **GENERAL CONVERSATION**: For questions about your capabilities, tools, or general information
+   - Answer directly without calling tools
+   - Be helpful and informative
+   - Explain what you can do
+   - Don't try to call tools for general questions
+
+2. **BLOCKCHAIN OPERATIONS**: For specific blockchain actions
+   - Use the available MCP tools to perform operations
+   - Follow the detailed formatting requirements below
+
 Your capabilities include:
 - Checking ETH and token balances for any address
 - Sending ETH transactions between addresses  
@@ -323,10 +511,7 @@ Your capabilities include:
 - Getting default addresses configuration
 - Interacting with the Ethereum blockchain through Foundry tools
 - **AGENTIC RAG System**: Automatically provides relevant Uniswap documentation and contract source code for your responses
-
-Other important addresses:
-- Uniswap V2 Router: 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
-- USDC Token: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+- Web search capabilities for real-time information
 
 Available MCP Tools:
 - get_default_addresses: Get the default sender and recipient addresses (PRD configuration)
@@ -335,6 +520,18 @@ Available MCP Tools:
 - send_eth: Send ETH from Alice to a recipient address
 - token_balance: Check token balance for any address
 - is_contract_deployed: Check if a contract is deployed at an address
+- web_search: Search the web for current information
+
+**GENERAL CONVERSATION EXAMPLES:**
+- "What tools do you have access to?" → List your capabilities without calling tools
+- "How do you work?" → Explain your architecture and capabilities
+- "What can you do?" → Describe your features and functions
+- "Tell me about yourself" → Explain your role and capabilities
+
+**BLOCKCHAIN OPERATION EXAMPLES:**
+- "send 1 ETH to Bob" → Use send_eth tool
+- "How much USDC does Alice have?" → Use token_balance tool
+- "Is Uniswap V2 Router deployed?" → Use is_contract_deployed tool
 
 **IMPORTANT: RAG functionality is NOT available as MCP tools. Use CLI commands only.**
 

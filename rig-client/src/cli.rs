@@ -129,6 +129,28 @@ impl Repl {
                         continue;
                     }
                     
+                    // Handle API status
+                    if matches!(input.to_lowercase().as_str(), "api-status" | "apis") {
+                        println!("🔧 API Usage Status:\n");
+                        println!("🌐 **Brave Search API**: Available for web searches and real-time data");
+                        println!("   • Used for: Token prices, contract info, web searches");
+                        println!("   • Triggers: 'web_search', 'get_token_price', 'get_contract_info'");
+                        println!("   • Example: 'What is the current ETH price?'\n");
+                        
+                        println!("🔗 **MCP Server**: Available for blockchain operations");
+                        println!("   • Used for: ETH transfers, balance checks, contract deployment");
+                        println!("   • Tools: send_eth, token_balance, is_contract_deployed");
+                        println!("   • Example: 'send 1 ETH to Bob'\n");
+                        
+                        println!("📚 **RAG System**: Available for Uniswap documentation");
+                        println!("   • Used for: Uniswap questions, contract documentation");
+                        println!("   • Command: 'rag-search [query]'");
+                        println!("   • Example: 'rag-search how does Uniswap V2 work?'\n");
+                        
+                        println!("💡 **Tip**: Look for '[BRAVE API]' in logs or '🌐 [Used Brave Search API]' in responses\n");
+                        continue;
+                    }
+                    
                     // Process user input with Claude
                     match self.agent.process_command(input).await {
                         Ok(response) => {
@@ -138,7 +160,25 @@ impl Repl {
                         }
                         Err(e) => {
                             error!("❌ Error processing command: {}", e);
-                            println!("❌ Sorry, I encountered an error: {}\n", e);
+                            
+                            // Provide more helpful error messages for common issues
+                            let error_msg = e.to_string();
+                            if error_msg.contains("ToolNotFoundError") {
+                                println!("❌ I don't have access to that specific tool. Here's what I can do:");
+                                println!("   • Send ETH transactions");
+                                println!("   • Check token balances");
+                                println!("   • Verify contract deployment");
+                                println!("   • Get account information");
+                                println!("   • Search the web for information");
+                                println!("   • Answer questions about Uniswap and blockchain");
+                                println!("   • Type 'help' for more information\n");
+                            } else if error_msg.contains("overloaded_error") {
+                                println!("⚠️ The system is currently busy. Please try again in a moment.\n");
+                            } else if error_msg.contains("InvalidAuthentication") {
+                                println!("❌ Authentication error. Please check your API keys.\n");
+                            } else {
+                                println!("❌ Sorry, I encountered an error: {}\n", e);
+                            }
                         }
                     }
                 }
@@ -164,9 +204,20 @@ impl Repl {
     fn format_response(response: &str) -> String {
         let mut formatted = String::new();
         
+        // Check if this response used Brave Search API
+        let used_brave_api = response.contains("web_search") || 
+                            response.contains("get_token_price") || 
+                            response.contains("get_contract_info") ||
+                            response.contains("handle_swap_intent");
+        
         // Add a visual separator
         formatted.push_str("🤖 Response:\n");
         formatted.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        
+        // Add Brave API indicator if used
+        if used_brave_api {
+            formatted.push_str("🌐 [Used Brave Search API for real-time information]\n\n");
+        }
         
         // Split response into lines and format each line
         let lines: Vec<&str> = response.lines().collect();
@@ -211,6 +262,9 @@ impl Repl {
         println!("    • rag-init [path] - Initialize RAG system with documentation");
         println!("    • rag-search [query] - Search Uniswap documentation");
         println!("    • rag-status - Show RAG system status");
+        println!("  \n  API Information:");
+        println!("    • api-status, apis - Show which APIs are being used");
+        println!("    • Look for '[BRAVE API]' in logs or '🌐 [Used Brave Search API]' in responses");
         println!("  \n  Additional Operations:");
         println!("    • Get default addresses (Alice/Bob configuration)");
         println!("    • Get list of available accounts");
@@ -229,6 +283,10 @@ impl Repl {
         println!("    • rag-search \"How do I calculate slippage for Uniswap V3?\"");
         println!("    • rag-search \"What's the difference between exactInput and exactOutput?\"");
         println!("    • rag-search \"Show me the SwapRouter contract interface\"");
+        println!("  \n  API Usage Examples:");
+        println!("    • \"What is the current ETH price?\" (uses Brave Search API)");
+        println!("    • \"Search for Uniswap V2 router address\" (uses Brave Search API)");
+        println!("    • api-status (shows which APIs are available)");
         println!("  \n  Default Addresses (PRD):");
         println!("    • Alice: Account 0 from anvil (Default Sender)");
         println!("    • Bob: Account 1 from anvil (Default Recipient)");

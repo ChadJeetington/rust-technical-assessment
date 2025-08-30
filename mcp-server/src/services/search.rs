@@ -20,6 +20,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::env;
 use tracing::{info, error};
+use dotenv;
 
 /// Request structure for web searches
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -153,6 +154,13 @@ impl SearchService {
     pub async fn new() -> Result<Self> {
         info!("🔍 Creating Brave Search service");
         
+        // Load .env file if it exists
+        if dotenv::dotenv().is_err() {
+            info!("📝 No .env file found, using system environment variables");
+        } else {
+            info!("📝 Loaded .env file");
+        }
+        
         // Get API key from environment
         let api_key = env::var("BRAVE_SEARCH_API_KEY")
             .map_err(|_| anyhow::anyhow!("BRAVE_SEARCH_API_KEY environment variable not set"))?;
@@ -173,7 +181,12 @@ impl SearchService {
         &self,
         Parameters(WebSearchRequest { query, count, country, search_lang }): Parameters<WebSearchRequest>,
     ) -> Result<CallToolResult, McpError> {
-        info!("🔍 Performing web search: {}", query);
+        info!("🔍 [BRAVE API] Performing web search: {}", query);
+        info!("🌐 [BRAVE API] Using Brave Search API with parameters: count={}, country={}, lang={}", 
+            count.unwrap_or(10), 
+            country.as_ref().unwrap_or(&"us".to_string()), 
+            search_lang.as_ref().unwrap_or(&"en".to_string())
+        );
         
         // Build request parameters
         let params = vec![
@@ -191,14 +204,14 @@ impl SearchService {
             .send()
             .await
             .map_err(|e| {
-                error!("Failed to make Brave Search API request: {}", e);
+                error!("❌ [BRAVE API] Failed to make Brave Search API request: {}", e);
                 McpError::internal_error(format!("API request failed: {}", e), None)
             })?;
         
         // Parse response
         let search_response: BraveSearchResponse = response.json().await
             .map_err(|e| {
-                error!("Failed to parse Brave Search API response: {}", e);
+                error!("❌ [BRAVE API] Failed to parse Brave Search API response: {}", e);
                 McpError::internal_error(format!("Failed to parse response: {}", e), None)
             })?;
         
@@ -217,7 +230,7 @@ impl SearchService {
             total_results: results.len(),
         };
         
-        info!("✅ Web search completed with {} results", search_response.total_results);
+        info!("✅ [BRAVE API] Web search completed with {} results", search_response.total_results);
         
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string_pretty(&search_response)
@@ -231,13 +244,15 @@ impl SearchService {
         &self,
         Parameters(TokenPriceRequest { token, base_currency }): Parameters<TokenPriceRequest>,
     ) -> Result<CallToolResult, McpError> {
-        info!("💰 Getting price for token: {}", token);
+        info!("💰 [BRAVE API] Getting price for token: {} (using Brave Search API)", token);
         
         // Create search query for token price
         let query = format!("{} {} price", 
             token, 
             base_currency.unwrap_or_else(|| "USD".to_string())
         );
+        
+        info!("🔍 [BRAVE API] Creating search query: '{}'", query);
         
         // Use web search to find price information
         let search_request = WebSearchRequest {
@@ -250,7 +265,7 @@ impl SearchService {
         // Call web search internally
         let search_result = self.web_search(Parameters(search_request)).await?;
         
-        info!("✅ Token price search completed");
+        info!("✅ [BRAVE API] Token price search completed via Brave Search API");
         
         Ok(search_result)
     }
@@ -261,11 +276,13 @@ impl SearchService {
         &self,
         Parameters(ContractInfoRequest { contract, network }): Parameters<ContractInfoRequest>,
     ) -> Result<CallToolResult, McpError> {
-        info!("📋 Getting contract info for: {}", contract);
+        info!("📋 [BRAVE API] Getting contract info for: {} (using Brave Search API)", contract);
         
         // Create search query for contract information
         let network = network.unwrap_or_else(|| "ethereum".to_string());
         let query = format!("{} {} contract address", contract, network);
+        
+        info!("🔍 [BRAVE API] Creating contract search query: '{}'", query);
         
         // Use web search to find contract information
         let search_request = WebSearchRequest {
@@ -278,7 +295,7 @@ impl SearchService {
         // Call web search internally
         let search_result = self.web_search(Parameters(search_request)).await?;
         
-        info!("✅ Contract info search completed");
+        info!("✅ [BRAVE API] Contract info search completed via Brave Search API");
         
         Ok(search_result)
     }
@@ -289,12 +306,15 @@ impl SearchService {
         &self,
         Parameters(SwapIntentRequest { from_token, to_token, amount, dex }): Parameters<SwapIntentRequest>,
     ) -> Result<CallToolResult, McpError> {
-        info!("🔄 Handling swap intent: {} {} to {} on {}", amount, from_token, to_token, dex.as_deref().unwrap_or("any DEX"));
+        info!("🔄 [BRAVE API] Handling swap intent: {} {} to {} on {} (using Brave Search API)", 
+            amount, from_token, to_token, dex.as_deref().unwrap_or("any DEX"));
         
         let dex_name = dex.unwrap_or_else(|| "Uniswap V2".to_string());
         
         // Step 1: Search for DEX contract information
         let dex_query = format!("{} {} router contract address ethereum", dex_name, to_token);
+        info!("🔍 [BRAVE API] Step 1: Searching for DEX contract with query: '{}'", dex_query);
+        
         let dex_search_request = WebSearchRequest {
             query: dex_query,
             count: Some(3),
@@ -306,6 +326,8 @@ impl SearchService {
         
         // Step 2: Search for token price information
         let price_query = format!("{} {} price USD", from_token, to_token);
+        info!("🔍 [BRAVE API] Step 2: Searching for token price with query: '{}'", price_query);
+        
         let price_search_request = WebSearchRequest {
             query: price_query,
             count: Some(3),
@@ -342,7 +364,7 @@ impl SearchService {
             ),
         };
         
-        info!("✅ Swap intent handled successfully");
+        info!("✅ [BRAVE API] Swap intent handled successfully via Brave Search API");
         
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string_pretty(&swap_response)

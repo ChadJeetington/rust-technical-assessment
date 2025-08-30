@@ -69,7 +69,7 @@ impl MyMcp {
 User   ◄───► │ • CLI REPL      │                    │ • Foundry - Cast │
 Claude ◄───► │ • LLM API Key   │                    │ • Tx Generation  │
              │ • User Input    │                    │ • State Fork     │
-             │ • Response      │                    │ • Anthropic SDK  │
+             │ • Response      │                    │ • Anthr MCP SDK  │
              └─────────────────┘                    └──────────────────┘
                       │                                       │
                       │                                       │

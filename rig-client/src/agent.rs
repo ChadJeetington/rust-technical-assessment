@@ -5,10 +5,22 @@
 //! 2. Processes natural language commands using Claude
 //! 3. Uses MCP tools to execute blockchain operations
 //! 4. Returns human-friendly responses
+//! 5. **NEW**: Automatically uses RAG system for Uniswap documentation
 
 use rig::completion::Prompt;
 use rig::providers::anthropic::{self, CLAUDE_3_HAIKU};
 use rig::client::CompletionClient;
+use rig::vector_store::in_memory_store::InMemoryVectorStore;
+use rig::embeddings::EmbeddingsBuilder;
+use rig::{Embed, vector_store::VectorStoreIndex};
+use rig_fastembed::{Client as FastembedClient, FastembedModel};
+
+/// Simple text document for RAG
+#[derive(rig::Embed, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+struct SimpleTextDocument {
+    #[embed]
+    content: String,
+}
 use rmcp::{
     transport::StreamableHttpClientTransport,
     model::{ClientInfo, ClientCapabilities, Implementation, Tool},
@@ -17,13 +29,13 @@ use rmcp::{
 use tracing::{debug, error, info, warn};
 use crate::rag::UniswapRagSystem;
 
-/// The main blockchain agent that combines Claude AI with MCP tools
+/// The main blockchain agent that combines Claude AI with MCP tools and RAG
 pub struct BlockchainAgent {
-    /// Claude AI agent configured with MCP tools
+    /// Claude AI agent configured with MCP tools and RAG dynamic context
     claude_agent: rig::agent::Agent<anthropic::completion::CompletionModel>,
     /// MCP client that must be kept alive for the connection
     _mcp_client: rmcp::service::RunningService<RoleClient, rmcp::model::InitializeRequestParam>,
-    /// RAG system for Uniswap documentation and contracts
+    /// RAG system for Uniswap documentation and contracts (kept for manual search)
     rag_system: Option<UniswapRagSystem>,
 }
 
@@ -102,14 +114,37 @@ impl BlockchainAgent {
         })
     }
 
-    /// Process a natural language command using Claude with MCP tools
+    /// Process a natural language command using Claude with MCP tools and RAG
     pub async fn process_command(&self, user_input: &str) -> crate::Result<String> {
         debug!("📝 Processing command: {}", user_input);
+        
+        // Check if this looks like a Uniswap documentation query
+        let is_uniswap_query = user_input.to_lowercase().contains("uniswap") || 
+                              user_input.to_lowercase().contains("swap") ||
+                              user_input.to_lowercase().contains("router") ||
+                              user_input.to_lowercase().contains("slippage") ||
+                              user_input.to_lowercase().contains("exactinput") ||
+                              user_input.to_lowercase().contains("exactoutput") ||
+                              user_input.to_lowercase().contains("v2") ||
+                              user_input.to_lowercase().contains("v3");
+        
+        let enhanced_input = if is_uniswap_query && self.rag_system.is_some() {
+            // Add RAG context to the query
+            match self.enhance_query_with_rag(user_input).await {
+                Ok(enhanced) => enhanced,
+                Err(e) => {
+                    warn!("⚠️ Failed to enhance query with RAG: {}, using original query", e);
+                    user_input.to_string()
+                }
+            }
+        } else {
+            user_input.to_string()
+        };
         
         // Use Claude with MCP tools to process the command
         // Claude will automatically call the appropriate MCP tools based on the user's request
         let response = self.claude_agent
-            .prompt(user_input)
+            .prompt(&enhanced_input)
             .multi_turn(5) // Allow up to 5 tool call rounds for complex operations
             .await
             .map_err(|e| {
@@ -133,9 +168,9 @@ impl BlockchainAgent {
         Ok(format!("Connection test successful. Available accounts:\n{}", test_response))
     }
 
-    /// Initialize the RAG system with Uniswap documentation
+    /// Initialize the RAG system with Uniswap documentation and integrate with agent
     pub async fn initialize_rag_system(&mut self, docs_path: Option<&str>) -> crate::Result<()> {
-        info!("🔧 Initializing RAG system for Uniswap documentation");
+        info!("🔧 Initializing AGENTIC RAG system for Uniswap documentation");
         
         let mut rag_system = UniswapRagSystem::new().await?;
         
@@ -151,10 +186,100 @@ impl BlockchainAgent {
             rag_system.add_sample_documentation().await?;
         }
         
+        // Create embeddings for agentic RAG integration
+        info!("🤖 Creating embeddings for agentic RAG integration...");
+        let embedding_client = FastembedClient::new();
+        let embedding_model = embedding_client.embedding_model(&FastembedModel::AllMiniLML6V2Q);
+        
+        // Get all documents from RAG system and convert to simple text format
+        let documents = rag_system.get_all_documents().await?;
+        
+        // Create embeddings using RIG's EmbeddingsBuilder with simple text documents
+        let mut embeddings_builder = EmbeddingsBuilder::new(embedding_model.clone());
+        
+        for doc in documents.iter() {
+            let doc_text = format!("Title: {}\nTags: {}\nContent:\n{}", 
+                doc.title, 
+                doc.metadata.tags.join(", "), 
+                doc.content
+            );
+            let simple_doc = SimpleTextDocument { content: doc_text };
+            embeddings_builder = embeddings_builder.document(simple_doc)
+                .map_err(|e| crate::ClientError::RagError(format!("Failed to add document: {}", e)))?;
+        }
+        
+        let embeddings = embeddings_builder
+            .build()
+            .await
+            .map_err(|e| crate::ClientError::RagError(format!("Failed to build embeddings: {}", e)))?;
+        
+        // Create vector store and index for dynamic context
+        let vector_store = InMemoryVectorStore::from_documents(embeddings);
+        let vector_index = vector_store.index(embedding_model);
+        
+        // Recreate the agent with dynamic context
+        info!("🔄 Recreating agent with dynamic RAG context...");
+        let anthropic_client = anthropic::Client::new(&std::env::var("ANTHROPIC_API_KEY").unwrap_or_default());
+        
+        // Get MCP tools from the existing connection
+        let tools: Vec<Tool> = self._mcp_client.list_tools(Default::default()).await
+            .map_err(|e| crate::ClientError::McpConnection(format!("Failed to fetch tools: {}", e)))?
+            .tools;
+        
+        // Create new agent with enhanced RAG guidance (without dynamic context for now)
+        let agent_builder = anthropic_client
+            .agent(CLAUDE_3_HAIKU)
+            .preamble(&Self::get_system_prompt())
+            .temperature(0.1)
+            .max_tokens(4096);
+        
+        // Add MCP tools
+        let claude_agent = tools
+            .into_iter()
+            .fold(agent_builder, |agent, tool| {
+                debug!("🔧 Adding MCP tool to agent: {}", tool.name);
+                agent.rmcp_tool(tool, self._mcp_client.clone())
+            })
+            .build();
+        
+        // Update the agent
+        self.claude_agent = claude_agent;
         self.rag_system = Some(rag_system);
-        info!("✅ RAG system initialized with {} documents", self.rag_system.as_ref().unwrap().document_count());
+        
+        info!("✅ AGENTIC RAG system initialized with {} documents", self.rag_system.as_ref().unwrap().document_count());
+        info!("🎯 Claude will now automatically use RAG context for Uniswap questions!");
         
         Ok(())
+    }
+
+    /// Enhance a query with relevant RAG context
+    async fn enhance_query_with_rag(&self, query: &str) -> crate::Result<String> {
+        if let Some(rag_system) = &self.rag_system {
+            // Search for relevant documents
+            let results = rag_system.search(query, 3).await?;
+            
+            if results.is_empty() {
+                return Ok(query.to_string());
+            }
+            
+            // Build context from search results
+            let mut context = String::new();
+            context.push_str("\n\nRELEVANT UNISWAP DOCUMENTATION:\n");
+            context.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+            
+            for (score, _id, doc) in &results {
+                context.push_str(&format!("📋 Document: {} (Relevance: {:.1}%)\n", doc.title, (score * 100.0).min(100.0)));
+                context.push_str(&format!("🏷️  Tags: {}\n", doc.metadata.tags.join(", ")));
+                context.push_str(&format!("📝 Content:\n{}\n\n", doc.content));
+                context.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
+            }
+            
+            // Combine original query with RAG context
+            let enhanced_query = format!("{}\n\n{}", query, context);
+            Ok(enhanced_query)
+        } else {
+            Ok(query.to_string())
+        }
     }
 
     /// Search for relevant Uniswap documentation
@@ -176,7 +301,7 @@ impl BlockchainAgent {
     /// Generate the system prompt for Claude
     fn get_system_prompt() -> String {
         r#"
-You are an expert Ethereum blockchain assistant with access to powerful blockchain tools via an MCP server and a comprehensive RAG system for Uniswap documentation.
+You are an expert Ethereum blockchain assistant with access to powerful blockchain tools via an MCP server and an AGENTIC RAG system for Uniswap documentation.
 
 CRITICAL DEFAULT ADDRESSES (PRD Requirements):
 - Alice: Account 0 from anvil (DEFAULT SENDER)
@@ -197,7 +322,7 @@ Your capabilities include:
 - Getting lists of available accounts and their private keys
 - Getting default addresses configuration
 - Interacting with the Ethereum blockchain through Foundry tools
-- **RAG System**: Access to comprehensive Uniswap documentation and contract source code
+- **AGENTIC RAG System**: Automatically provides relevant Uniswap documentation and contract source code for your responses
 
 Other important addresses:
 - Uniswap V2 Router: 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
@@ -211,7 +336,9 @@ Available MCP Tools:
 - token_balance: Check token balance for any address
 - is_contract_deployed: Check if a contract is deployed at an address
 
-**RAG SYSTEM CAPABILITIES:**
+**IMPORTANT: RAG functionality is NOT available as MCP tools. Use CLI commands only.**
+
+**ENHANCED RAG SYSTEM CAPABILITIES:**
 You have access to a comprehensive RAG system that includes:
 - Uniswap V2 and V3 documentation
 - Contract source code and interfaces
@@ -219,7 +346,15 @@ You have access to a comprehensive RAG system that includes:
 - Best practices and examples
 - Function signatures and parameters
 
-When users ask about Uniswap functionality, you can search the documentation and provide detailed, accurate answers based on the actual source code and documentation.
+**RAG INTEGRATION STRATEGY:**
+You now have AUTOMATIC RAG capabilities! When users ask about Uniswap functionality:
+1. **Automatically search and retrieve relevant documentation** from the Uniswap knowledge base
+2. **Provide comprehensive, accurate answers** based on the retrieved documentation
+3. **Include relevant code examples** and practical guidance
+4. **Explain differences between V2 and V3** when applicable
+5. **Cite specific documentation** when referencing information
+
+The RAG system will automatically provide you with the most relevant Uniswap documentation for each query, so you can give authoritative, detailed answers.
 
 RESPONSE FORMATTING REQUIREMENTS:
 1. Always start your response with a brief summary of what you're doing
@@ -253,10 +388,12 @@ For contract checks:
 - Clearly indicate the deployment status
 
 For Uniswap documentation queries:
-- Search the RAG system for relevant documentation
-- Provide detailed answers based on the actual source code and documentation
-- Include code examples and function signatures when relevant
-- Explain differences between V2 and V3 when applicable
+- **Provide immediate helpful answers** based on your knowledge
+- **Suggest RAG searches** for detailed technical questions about Uniswap
+- **Explain that rag-search is a CLI command** for specific documentation queries
+- **Explain differences between V2 and V3** when applicable
+- **CRITICAL: Do NOT try to call rag-search as a tool** - it's a CLI command only
+- **CRITICAL: Do NOT use any tool calls for RAG functionality**
 
 EXAMPLE RESPONSE FORMAT:
 "I'll help you send 1 ETH from Alice to Bob.

@@ -30,7 +30,7 @@ impl Repl {
         println!("   • Type 'quit' or 'exit' to stop\n");
         println!("📚 RAG System Commands:");
         println!("   • rag-init [path] - Initialize RAG system with documentation");
-        println!("   • rag-search [query] - Search Uniswap documentation");
+        println!("   • rag-search [query] - Ask questions about Uniswap (with automatic RAG)");
         println!("   • rag-status - Show RAG system status");
         println!("   • Type 'help' for more commands\n");
 
@@ -91,7 +91,7 @@ impl Repl {
                         continue;
                     }
                     
-                    // Handle RAG search
+                    // Handle RAG search (now integrated with agent)
                     if input.to_lowercase().starts_with("rag-search") {
                         let parts: Vec<&str> = input.split_whitespace().collect();
                         if parts.len() < 2 {
@@ -100,25 +100,17 @@ impl Repl {
                         }
                         
                         let query = parts[1..].join(" ");
-                        match self.agent.search_documentation(&query, 3).await {
-                            Ok(results) => {
-                                println!("🔍 Search results for '{}':\n", query);
-                                for (score, id, doc) in results {
-                                    println!("📄 Score: {:.3} | ID: {}", score, id);
-                                    println!("📋 Title: {}", doc.title);
-                                    println!("🏷️  Tags: {}", doc.metadata.tags.join(", "));
-                                    println!("📝 Content preview: {}", 
-                                        if doc.content.len() > 200 { 
-                                            format!("{}...", &doc.content[..200]) 
-                                        } else { 
-                                            doc.content.clone() 
-                                        });
-                                    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-                                }
+                        println!("🔍 Processing RAG query: '{}'\n", query);
+                        
+                        // Let the agent handle the RAG query automatically
+                        match self.agent.process_command(&query).await {
+                            Ok(response) => {
+                                println!("🤖 RAG-Enhanced Response:\n");
+                                println!("{}", Self::format_response(&response));
                             }
                             Err(e) => {
-                                error!("❌ RAG search failed: {}", e);
-                                println!("❌ RAG search failed: {}\n", e);
+                                error!("❌ Failed to process RAG query: {}", e);
+                                println!("❌ Failed to process RAG query: {}\n", e);
                             }
                         }
                         continue;

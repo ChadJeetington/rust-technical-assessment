@@ -19,7 +19,7 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 /// Document structure for storing Uniswap documentation and contract code
-#[derive(rig::Embed, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(rig::Embed, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UniswapDocument {
     /// Unique identifier for the document
     pub id: String,
@@ -56,6 +56,20 @@ pub struct DocumentMetadata {
     pub tags: Vec<String>,
     /// Creation timestamp
     pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl std::fmt::Display for UniswapDocument {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Return just the content for RAG context
+        write!(f, "{}", self.content)
+    }
+}
+
+impl UniswapDocument {
+    /// Override to_string to ensure content is used for RAG context
+    pub fn to_string(&self) -> String {
+        self.content.clone()
+    }
 }
 
 /// RAG system for Uniswap documentation and contracts
@@ -274,6 +288,274 @@ impl UniswapRagSystem {
     /// Get document count
     pub fn document_count(&self) -> usize {
         self.document_count
+    }
+    
+    /// Get all documents for agentic RAG integration
+    pub async fn get_all_documents(&self) -> crate::Result<Vec<UniswapDocument>> {
+        // For now, we'll return the sample documents since we don't store them separately
+        // In a production system, you'd want to maintain a separate document store
+        let sample_docs = vec![
+            UniswapDocument {
+                id: "uniswap_v2_router_interface".to_string(),
+                title: "Uniswap V2 Router Interface".to_string(),
+                doc_type: DocumentType::Interface,
+                content: r#"
+# Uniswap V2 Router Interface
+
+## swapExactETHForTokens
+Swaps an exact amount of ETH for as many output tokens as possible, along the route determined by the path.
+
+```solidity
+function swapExactETHForTokens(
+    uint amountOutMin,
+    address[] calldata path,
+    address to,
+    uint deadline
+) external payable returns (uint[] memory amounts);
+```
+
+## swapExactTokensForETH
+Swaps an exact amount of input tokens for as much ETH as possible, along the route determined by the path.
+
+```solidity
+function swapExactTokensForETH(
+    uint amountIn,
+    uint amountOutMin,
+    address[] calldata path,
+    address to,
+    uint deadline
+) external returns (uint[] memory amounts);
+```
+
+## swapExactTokensForTokens
+Swaps an exact amount of input tokens for as many output tokens as possible, along the route determined by the path.
+
+```solidity
+function swapExactTokensForTokens(
+    uint amountIn,
+    uint amountOutMin,
+    address[] calldata path,
+    address to,
+    uint deadline
+) external returns (uint[] memory amounts);
+```
+"#.to_string(),
+                metadata: DocumentMetadata {
+                    source_path: Some("sample".to_string()),
+                    version: Some("1.0".to_string()),
+                    tags: vec!["router".to_string(), "interface".to_string(), "v2".to_string()],
+                    created_at: chrono::Utc::now(),
+                },
+            },
+            UniswapDocument {
+                id: "uniswap_v3_router_interface".to_string(),
+                title: "Uniswap V3 Router Interface".to_string(),
+                doc_type: DocumentType::Interface,
+                content: r#"
+# Uniswap V3 Router Interface
+
+## exactInput
+Swaps an exact amount of input tokens for as many output tokens as possible, along the route determined by the path.
+
+```solidity
+function exactInput(
+    ExactInputParams calldata params
+) external payable returns (uint256 amountOut);
+
+struct ExactInputParams {
+    bytes path;
+    address recipient;
+    uint256 deadline;
+    uint256 amountIn;
+    uint256 amountOutMinimum;
+}
+```
+
+## exactOutput
+Swaps as many input tokens as possible for an exact amount of output tokens, along the route determined by the path.
+
+```solidity
+function exactOutput(
+    ExactOutputParams calldata params
+) external payable returns (uint256 amountIn);
+
+struct ExactOutputParams {
+    bytes path;
+    address recipient;
+    uint256 deadline;
+    uint256 amountOut;
+    uint256 amountInMaximum;
+}
+```
+
+## Key Differences:
+- **exactInput**: You specify the exact amount of input tokens, get maximum output tokens
+- **exactOutput**: You specify the exact amount of output tokens, pay maximum input tokens
+- **exactInput** is better when you want to spend a fixed amount
+- **exactOutput** is better when you need a specific amount of output tokens
+"#.to_string(),
+                metadata: DocumentMetadata {
+                    source_path: Some("sample".to_string()),
+                    version: Some("1.0".to_string()),
+                    tags: vec!["router".to_string(), "interface".to_string(), "v3".to_string(), "exactinput".to_string(), "exactoutput".to_string()],
+                    created_at: chrono::Utc::now(),
+                },
+            },
+            UniswapDocument {
+                id: "uniswap_v3_slippage_guide".to_string(),
+                title: "Uniswap V3 Slippage Calculation Guide".to_string(),
+                doc_type: DocumentType::Guide,
+                content: r#"
+# Uniswap V3 Slippage Calculation Guide
+
+## What is Slippage?
+Slippage is the difference between the expected price and the actual execution price of a trade. In Uniswap V3, slippage can occur due to:
+- Price movement between transaction submission and execution
+- Concentrated liquidity pools with different fee tiers
+- Market volatility
+
+## How to Calculate Slippage for Uniswap V3
+
+### 1. Using exactInput
+When using `exactInput`, you specify the exact amount of input tokens and set a minimum output amount:
+
+```solidity
+ExactInputParams memory params = ExactInputParams({
+    path: abi.encodePacked(tokenIn, fee, tokenOut),
+    recipient: address(this),
+    deadline: block.timestamp + 300, // 5 minutes
+    amountIn: 1000 * 10**18, // 1000 tokens
+    amountOutMinimum: 950 * 10**18  // 5% slippage tolerance
+});
+```
+
+### 2. Using exactOutput
+When using `exactOutput`, you specify the exact amount of output tokens and set a maximum input amount:
+
+```solidity
+ExactOutputParams memory params = ExactOutputParams({
+    path: abi.encodePacked(tokenIn, fee, tokenOut),
+    recipient: address(this),
+    deadline: block.timestamp + 300,
+    amountOut: 1000 * 10**18, // Exact output amount
+    amountInMaximum: 1050 * 10**18 // 5% slippage tolerance
+});
+```
+
+### 3. Slippage Calculation Formula
+```
+Slippage Percentage = ((Expected Price - Actual Price) / Expected Price) × 100
+```
+
+### 4. Best Practices
+- Set reasonable slippage tolerance (0.5% - 5% for stable pairs, 10%+ for volatile pairs)
+- Use shorter deadlines for volatile markets
+- Consider using Uniswap V3's concentrated liquidity for better price discovery
+- Monitor gas prices and adjust accordingly
+
+### 5. Example Implementation
+```solidity
+// Calculate minimum output with 2% slippage tolerance
+uint256 expectedOutput = getAmountOut(amountIn, path);
+uint256 minOutput = expectedOutput * 98 / 100; // 2% slippage
+
+// Use in exactInput
+params.amountOutMinimum = minOutput;
+```
+"#.to_string(),
+                metadata: DocumentMetadata {
+                    source_path: Some("sample".to_string()),
+                    version: Some("1.0".to_string()),
+                    tags: vec!["slippage".to_string(), "v3".to_string(), "guide".to_string(), "calculation".to_string()],
+                    created_at: chrono::Utc::now(),
+                },
+            },
+            UniswapDocument {
+                id: "uniswap_swap_router_contract".to_string(),
+                title: "Uniswap SwapRouter Contract".to_string(),
+                doc_type: DocumentType::ContractCode,
+                content: r#"
+# Uniswap SwapRouter Contract
+
+## Contract Addresses
+- **Uniswap V2 Router**: `0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D`
+- **Uniswap V3 Router**: `0xE592427A0AEce92De3Edee1F18E0157C05861564`
+
+## V2 Router Interface
+```solidity
+interface IUniswapV2Router02 {
+    function swapExactETHForTokens(
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external payable returns (uint[] memory amounts);
+    
+    function swapExactTokensForETH(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external returns (uint[] memory amounts);
+    
+    function swapExactTokensForTokens(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external returns (uint[] memory amounts);
+}
+```
+
+## V3 Router Interface
+```solidity
+interface ISwapRouter {
+    function exactInput(
+        ExactInputParams calldata params
+    ) external payable returns (uint256 amountOut);
+    
+    function exactOutput(
+        ExactOutputParams calldata params
+    ) external payable returns (uint256 amountIn);
+    
+    struct ExactInputParams {
+        bytes path;
+        address recipient;
+        uint256 deadline;
+        uint256 amountIn;
+        uint256 amountOutMinimum;
+    }
+    
+    struct ExactOutputParams {
+        bytes path;
+        address recipient;
+        uint256 deadline;
+        uint256 amountOut;
+        uint256 amountInMaximum;
+    }
+}
+```
+
+## Key Features
+- **V2**: Simple AMM with constant product formula
+- **V3**: Concentrated liquidity with multiple fee tiers
+- **V2**: Uses `amountOutMin` for slippage protection
+- **V3**: Uses `amountOutMinimum` (exactInput) or `amountInMaximum` (exactOutput)
+- **V2**: Path is array of token addresses
+- **V3**: Path is encoded bytes including fee information
+"#.to_string(),
+                metadata: DocumentMetadata {
+                    source_path: Some("sample".to_string()),
+                    version: Some("1.0".to_string()),
+                    tags: vec!["contract".to_string(), "router".to_string(), "v2".to_string(), "v3".to_string(), "interface".to_string()],
+                    created_at: chrono::Utc::now(),
+                },
+            },
+        ];
+        
+        Ok(sample_docs)
     }
     
     /// Add sample Uniswap documentation if no external docs are available

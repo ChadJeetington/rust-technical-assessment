@@ -66,8 +66,8 @@ impl std::fmt::Display for UniswapDocument {
 }
 
 impl UniswapDocument {
-    /// Override to_string to ensure content is used for RAG context
-    pub fn to_string(&self) -> String {
+    /// Get content for RAG context
+    pub fn get_content(&self) -> String {
         self.content.clone()
     }
 }
@@ -123,10 +123,9 @@ impl UniswapRagSystem {
             let path = entry.path();
             
             // Only process text files
-            if let Some(ext) = path.extension() {
-                if !matches!(ext.to_str(), Some("md") | Some("txt") | Some("sol") | Some("json")) {
-                    continue;
-                }
+            if let Some(ext) = path.extension()
+                && !matches!(ext.to_str(), Some("md") | Some("txt") | Some("sol") | Some("json")) {
+                continue;
             }
             
             match self.load_document_from_file(path).await {

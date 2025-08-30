@@ -12,7 +12,7 @@ use rig::providers::anthropic::{self, CLAUDE_3_HAIKU};
 use rig::client::CompletionClient;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
 use rig::embeddings::EmbeddingsBuilder;
-use rig::{Embed, vector_store::VectorStoreIndex};
+use rig::Embed;
 use rig_fastembed::{Client as FastembedClient, FastembedModel};
 
 /// Simple text document for RAG
@@ -215,7 +215,7 @@ impl BlockchainAgent {
         
         // Create vector store and index for dynamic context
         let vector_store = InMemoryVectorStore::from_documents(embeddings);
-        let vector_index = vector_store.index(embedding_model);
+        let _vector_index = vector_store.index(embedding_model);
         
         // Recreate the agent with dynamic context
         info!("🔄 Recreating agent with dynamic RAG context...");

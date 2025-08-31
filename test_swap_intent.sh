@@ -214,10 +214,7 @@ fn main() {
     }
     
     // Check for blockchain configuration
-    match env::var("ANVIL_RPC_URL") {
-        Ok(url) => println!("✅ ANVIL_RPC_URL is set: {}", url),
-        Err(_) => println!("ℹ️  ANVIL_RPC_URL not set (will use default: http://127.0.0.1:8545)"),
-    }
+    println!("ℹ️  ANVIL_RPC_URL is hardcoded to: http://127.0.0.1:8545");
     
     // Check for private key (optional but recommended)
     match env::var("ALICE_PRIVATE_KEY") {

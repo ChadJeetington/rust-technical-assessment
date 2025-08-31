@@ -143,7 +143,7 @@ impl BlockchainService {
             info!("Loaded environment variables from .env file");
         }
         
-        let rpc_url = env::var("ANVIL_RPC_URL").unwrap_or_else(|_| "http://127.0.0.1:8545".to_string());
+        let rpc_url = "http://127.0.0.1:8545".to_string();
         
         // Create provider connection to anvil
         let provider = ProviderBuilder::<_, _, AnyNetwork>::default()

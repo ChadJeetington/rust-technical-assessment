@@ -121,17 +121,10 @@ impl BlockchainAgent {
         // Check if this is a general question that doesn't require tool calling
         let is_general_question = self.is_general_question(user_input);
         
-        // Check if this looks like a Uniswap documentation query
-        let is_uniswap_query = user_input.to_lowercase().contains("uniswap") || 
-                              user_input.to_lowercase().contains("swap") ||
-                              user_input.to_lowercase().contains("router") ||
-                              user_input.to_lowercase().contains("slippage") ||
-                              user_input.to_lowercase().contains("exactinput") ||
-                              user_input.to_lowercase().contains("exactoutput") ||
-                              user_input.to_lowercase().contains("v2") ||
-                              user_input.to_lowercase().contains("v3");
+        // Check if this is a documentation/help query that should trigger RAG
+        let is_documentation_query = self.is_documentation_query(user_input);
         
-        let enhanced_input = if is_uniswap_query && self.rag_system.is_some() {
+        let enhanced_input = if is_documentation_query && self.rag_system.is_some() {
             // Add RAG context to the query
             match self.enhance_query_with_rag(user_input).await {
                 Ok(enhanced) => enhanced,
@@ -195,6 +188,94 @@ impl BlockchainAgent {
         ];
         
         general_patterns.iter().any(|pattern| lower_input.contains(pattern))
+    }
+
+    /// Check if the input is a documentation/help query that should trigger RAG
+    fn is_documentation_query(&self, input: &str) -> bool {
+        let lower_input = input.to_lowercase();
+        
+        // Check for question marks and documentation keywords first
+        let has_question_mark = lower_input.contains('?');
+        let has_docs_keyword = lower_input.contains("docs") || 
+                              lower_input.contains("documentation") || 
+                              lower_input.contains("guide") || 
+                              lower_input.contains("tutorial");
+        
+        // Check for question words that indicate documentation queries
+        let has_question_word = lower_input.contains("how do i") ||
+                               lower_input.contains("how to") ||
+                               lower_input.contains("what is") ||
+                               lower_input.contains("what's") ||
+                               lower_input.contains("explain") ||
+                               lower_input.contains("show me") ||
+                               lower_input.contains("tell me") ||
+                               lower_input.contains("describe") ||
+                               lower_input.contains("what does") ||
+                               lower_input.contains("difference between") ||
+                               lower_input.contains("calculate") ||
+                               lower_input.contains("compute");
+        
+        // Check for Uniswap-specific terms
+        let has_uniswap_term = lower_input.contains("uniswap") ||
+                              lower_input.contains("slippage") ||
+                              lower_input.contains("exactinput") ||
+                              lower_input.contains("exactoutput") ||
+                              lower_input.contains("router") ||
+                              lower_input.contains("factory") ||
+                              lower_input.contains("pair") ||
+                              lower_input.contains("pool") ||
+                              lower_input.contains("liquidity") ||
+                              lower_input.contains("oracle") ||
+                              lower_input.contains("flash") ||
+                              lower_input.contains("callback") ||
+                              lower_input.contains("multicall") ||
+                              lower_input.contains("permit") ||
+                              lower_input.contains("signature") ||
+                              lower_input.contains("eip712") ||
+                              lower_input.contains("deadline") ||
+                              lower_input.contains("gas") ||
+                              lower_input.contains("event") ||
+                              lower_input.contains("error") ||
+                              lower_input.contains("revert");
+        
+        // Check for version-specific terms
+        let has_version_term = lower_input.contains("v2") ||
+                              lower_input.contains("v3") ||
+                              lower_input.contains("v4");
+        
+        // Logic to determine if this is a documentation query:
+        // 1. Must have a question mark OR documentation keywords OR question words
+        // 2. AND must have Uniswap-specific terms OR version terms
+        let is_question_format = has_question_mark || has_docs_keyword || has_question_word;
+        let is_uniswap_related = has_uniswap_term || has_version_term;
+        
+        // Additional checks to exclude non-documentation queries:
+        
+        // Check: if it's a simple command (like "swap 1 ETH for USDC"), don't trigger RAG
+        let is_simple_command = lower_input.contains("swap") && 
+                               (lower_input.contains("eth") || lower_input.contains("usdc") || lower_input.contains("token")) &&
+                               !has_question_mark &&
+                               !has_docs_keyword &&
+                               !has_question_word;
+        
+        // Check: if it's a deployment check (like "Is contract X deployed?"), don't trigger RAG
+        let is_deployment_check = lower_input.contains("deployed") && 
+                                 (lower_input.contains("is") || lower_input.contains("check")) &&
+                                 !has_docs_keyword &&
+                                 !has_question_word;
+        
+        // Check: if it's just terms without question format, don't trigger RAG
+        let is_just_terms = !has_question_mark && !has_docs_keyword && !has_question_word;
+        
+        // Check: if it's just a simple phrase with contract/interface terms, don't trigger RAG
+        let is_simple_phrase = (lower_input.contains("contract") || lower_input.contains("interface")) &&
+                              !has_question_mark &&
+                              !has_docs_keyword &&
+                              !has_question_word &&
+                              lower_input.split_whitespace().count() <= 3; // Simple phrases like "SwapRouter contract"
+        
+        // Trigger RAG if it's a question format AND uniswap related AND NOT excluded
+        is_question_format && is_uniswap_related && !is_simple_command && !is_deployment_check && !is_just_terms && !is_simple_phrase
     }
 
     /// Handle general questions without tool calling
@@ -473,6 +554,12 @@ I'm here to make blockchain interactions simple and accessible through natural l
         })
     }
 
+    /// Test function to verify RAG logic (for debugging)
+    #[cfg(test)]
+    pub fn test_rag_logic(&self, input: &str) -> bool {
+        self.is_documentation_query(input)
+    }
+
     /// Generate the system prompt for Claude
     fn get_system_prompt() -> String {
         r#"
@@ -544,14 +631,19 @@ You have access to a comprehensive RAG system that includes:
 - Function signatures and parameters
 
 **RAG INTEGRATION STRATEGY:**
-You now have AUTOMATIC RAG capabilities! When users ask about Uniswap functionality:
-1. **Automatically search and retrieve relevant documentation** from the Uniswap knowledge base
-2. **Provide comprehensive, accurate answers** based on the retrieved documentation
-3. **Include relevant code examples** and practical guidance
-4. **Explain differences between V2 and V3** when applicable
-5. **Cite specific documentation** when referencing information
+The RAG system is automatically triggered ONLY for documentation questions about Uniswap. It will provide you with relevant documentation when users ask:
+1. **Questions about Uniswap functionality** (e.g., "How does Uniswap V2 work?")
+2. **Documentation queries** (e.g., "Uniswap V3 documentation")
+3. **Technical explanations** (e.g., "Explain Uniswap slippage")
+4. **Code examples and guides** (e.g., "Uniswap V2 tutorial")
 
-The RAG system will automatically provide you with the most relevant Uniswap documentation for each query, so you can give authoritative, detailed answers.
+**IMPORTANT:** RAG is NOT triggered for:
+- Simple swap commands (e.g., "swap 1 ETH for USDC")
+- Balance queries (e.g., "How much USDC does Alice have?")
+- Transaction operations (e.g., "send 1 ETH to Bob")
+- Contract deployment checks (e.g., "Is Uniswap Router deployed?")
+
+When RAG is triggered, you will automatically receive relevant Uniswap documentation to provide comprehensive, accurate answers.
 
 RESPONSE FORMATTING REQUIREMENTS:
 1. Always start your response with a brief summary of what you're doing

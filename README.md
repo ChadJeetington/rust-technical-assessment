@@ -27,7 +27,7 @@ This implementation **fully satisfies** all technical assessment requirements:
 #### **Bonus Requirements Met:**
 - ✅ **External API Integration**: Brave Search API for real-time data
 - ✅ **RAG System**: Uniswap documentation with vector embeddings
-- ✅ **Advanced DeFi Operations**: Token swaps with slippage protection
+- ✅ **Advanced DeFi Operations**: Token swaps 
 - ✅ **AI-Powered Tool Selection**: Intelligent command parsing
 
 
@@ -67,7 +67,7 @@ Claude ◄───► │ • LLM API Key   │                    │ • Tx G
 ### 🛠️ Advanced Tools (Bonus Implementation)
 - **Token Operations**: Balance queries, transfers, and swaps across multiple tokens
 - **Contract Verification**: Check deployment status and contract code
-- **DeFi Integration**: Uniswap V2/V3 router integration with slippage protection
+- **DeFi Integration**: Uniswap V2/V3 router integration 
 - **Web Search**: Real-time market data and contract information retrieval
 - **External API Integration**: Brave Search API for current market data
 
@@ -154,7 +154,6 @@ Available Accounts
 # Token swaps with external API integration:
 > Use Uniswap V2 Router to swap 10 ETH for USDC on Alice's account
 > Swap 10 ETH for USDC using Uniswap V2
-> Convert 500 USDC to ETH with 2% slippage
 > Use Uniswap V3 to swap ETH to DAI
 
 # Complex queries with RAG system:

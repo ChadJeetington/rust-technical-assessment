@@ -92,6 +92,7 @@ impl BlockchainAgent {
         // Create Claude agent with MCP tools
         let agent_builder = anthropic_client
             .agent(CLAUDE_3_HAIKU)
+            .name("RIG Agent")
             .preamble(&Self::get_system_prompt())
             .temperature(0.1) // Low temperature for consistent responses
             .max_tokens(4096); // Maximum allowed for Claude 3 Haiku

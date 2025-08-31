@@ -439,7 +439,6 @@ I'm here to make blockchain interactions simple and accessible through natural l
         
         // If no external docs loaded, add sample documentation
         if rag_system.document_count() == 0 {
-            info!("📚 No external documentation found, adding sample Uniswap docs");
             rag_system.add_sample_documentation().await?;
         }
         

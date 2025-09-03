@@ -5,6 +5,7 @@
 
 use mcp_server::services::blockchain::{BlockchainService, TokenBalanceRequest};
 use alloy_primitives::Address;
+use rmcp::handler::server::tool::Parameters;
 use std::str::FromStr;
 
 #[tokio::test]
@@ -52,7 +53,7 @@ async fn test_usdc_token_balance_on_forked_mainnet() {
             println!("🔍 Testing actual USDC balance query...");
             
             // Call the token_balance function directly
-            let result = service.token_balance(rmcp::handler::server::wrapper::Parameters(token_balance_req)).await;
+            let result = service.token_balance(Parameters(token_balance_req)).await;
             
             match result {
                 Ok(call_result) => {
@@ -60,7 +61,7 @@ async fn test_usdc_token_balance_on_forked_mainnet() {
                     println!("📊 Response: {:?}", call_result);
                     
                     // Extract the content from the response
-                    if let Some(content) = call_result.content.first() {
+                    if let Some(content) = call_result.content {
                         println!("📝 Balance Response: {:?}", content);
                         
                         // For now, just validate that we got a response
@@ -120,12 +121,12 @@ async fn test_multiple_usdc_balance_queries() {
                     token_address: usdc_address.to_string(),
                     account_address: address.to_string(),
                 };
-                let result = service.token_balance(rmcp::handler::server::wrapper::Parameters(token_balance_req)).await;
+                let result = service.token_balance(Parameters(token_balance_req)).await;
                 
                 match result {
                     Ok(call_result) => {
                         println!("✅ {} USDC balance query successful", name);
-                        if let Some(content) = call_result.content.first() {
+                        if let Some(content) = call_result.content {
                             println!("📊 {} Balance: {:?}", name, content);
                         }
                     }

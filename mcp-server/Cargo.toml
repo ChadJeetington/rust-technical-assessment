@@ -9,8 +9,8 @@ name = "mcp_server"
 path = "src/lib.rs"
 
 [dependencies]
-# MCP Framework
-rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk.git", features = [
+# MCP Framework - use same version as RIG client expects
+rmcp = { version = "0.5", features = [
     "server",
     "macros", 
     "transport-io",
@@ -23,6 +23,7 @@ rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk.git", features 
 tokio.workspace = true
 # Web framework for HTTP transport
 axum = "0.8"
+tower-http = { version = "0.5", features = ["cors"] }
 
 # Error handling
 anyhow.workspace = true
@@ -43,7 +44,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 schemars = "1.0"
 
 # Ethereum/Cast integration - Direct Foundry Cast usage
-cast = { path = "../../foundry/crates/cast", default-features = false }
+cast = { git = "https://github.com/foundry-rs/foundry", package = "cast" }
 alloy-primitives = "1.3.1"
 alloy-provider = { version = "1.0.23", features = ["reqwest"] }
 alloy-rpc-types = "1.0.23"

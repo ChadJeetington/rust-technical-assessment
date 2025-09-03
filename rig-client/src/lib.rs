@@ -6,6 +6,7 @@
 pub mod agent;
 pub mod cli;
 pub mod config;
+pub mod doc_ingestion;
 pub mod error;
 pub mod rag;
 

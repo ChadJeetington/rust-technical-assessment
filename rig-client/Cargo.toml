@@ -35,3 +35,11 @@ walkdir = "2.4"
 uuid = { version = "1.6", features = ["v4"] }
 # Date and time handling
 chrono = { version = "0.4", features = ["serde"] }
+# Git operations for document fetching
+git2 = "0.18"
+# URL parsing and validation
+url = "2.5"
+# Async traits
+async-trait = "0.1"
+# Cryptographic hashing
+sha2 = "0.10"

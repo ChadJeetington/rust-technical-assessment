@@ -123,7 +123,7 @@ impl BlockchainAgent {
         let is_general_question = self.is_general_question(user_input);
         
         // Check if this is a documentation/help query that should trigger RAG
-        let is_documentation_query = self.is_documentation_query(user_input);
+        let is_documentation_query = self.is_documentation_query(user_input).await?;
         
         let enhanced_input = if is_documentation_query && self.rag_system.is_some() {
             // Add RAG context to the query
@@ -192,91 +192,46 @@ impl BlockchainAgent {
     }
 
     /// Check if the input is a documentation/help query that should trigger RAG
-    fn is_documentation_query(&self, input: &str) -> bool {
-        let lower_input = input.to_lowercase();
+    async fn is_documentation_query(&self, input: &str) -> crate::Result<bool> {
+        // If RAG system is not initialized, return false
+        let rag_system = match &self.rag_system {
+            Some(rag) => rag,
+            None => return Ok(false),
+        };
+
+        // First, check if this is a blockchain operation
+        let blockchain_keywords = ["balance", "eth", "send", "transfer", "deploy", "gas", "alice", "bob"];
+        let input_lower = input.to_lowercase();
         
-        // Check for question marks and documentation keywords first
-        let has_question_mark = lower_input.contains('?');
-        let has_docs_keyword = lower_input.contains("docs") || 
-                              lower_input.contains("documentation") || 
-                              lower_input.contains("guide") || 
-                              lower_input.contains("tutorial");
+        // If it contains blockchain keywords, it's not a documentation query
+        if blockchain_keywords.iter().any(|&word| input_lower.contains(word)) {
+            return Ok(false);
+        }
         
-        // Check for question words that indicate documentation queries
-        let has_question_word = lower_input.contains("how do i") ||
-                               lower_input.contains("how to") ||
-                               lower_input.contains("what is") ||
-                               lower_input.contains("what's") ||
-                               lower_input.contains("explain") ||
-                               lower_input.contains("show me") ||
-                               lower_input.contains("tell me") ||
-                               lower_input.contains("describe") ||
-                               lower_input.contains("what does") ||
-                               lower_input.contains("difference between") ||
-                               lower_input.contains("calculate") ||
-                               lower_input.contains("compute");
+        // Documentation keywords that should trigger RAG
+        let doc_keywords = ["how", "what", "explain", "uniswap", "documentation", "docs", "swap", "pool", "liquidity", "pair", "slippage", "flash"];
         
-        // Check for Uniswap-specific terms
-        let has_uniswap_term = lower_input.contains("uniswap") ||
-                              lower_input.contains("slippage") ||
-                              lower_input.contains("exactinput") ||
-                              lower_input.contains("exactoutput") ||
-                              lower_input.contains("router") ||
-                              lower_input.contains("factory") ||
-                              lower_input.contains("pair") ||
-                              lower_input.contains("pool") ||
-                              lower_input.contains("liquidity") ||
-                              lower_input.contains("oracle") ||
-                              lower_input.contains("flash") ||
-                              lower_input.contains("callback") ||
-                              lower_input.contains("multicall") ||
-                              lower_input.contains("permit") ||
-                              lower_input.contains("signature") ||
-                              lower_input.contains("eip712") ||
-                              lower_input.contains("deadline") ||
-                              lower_input.contains("gas") ||
-                              lower_input.contains("event") ||
-                              lower_input.contains("error") ||
-                              lower_input.contains("revert");
+        // If it contains documentation keywords, it's a documentation query
+        if doc_keywords.iter().any(|&word| input_lower.contains(word)) {
+            return Ok(true);
+        }
         
-        // Check for version-specific terms
-        let has_version_term = lower_input.contains("v2") ||
-                              lower_input.contains("v3") ||
-                              lower_input.contains("v4");
-        
-        // Logic to determine if this is a documentation query:
-        // 1. Must have a question mark OR documentation keywords OR question words
-        // 2. AND must have Uniswap-specific terms OR version terms
-        let is_question_format = has_question_mark || has_docs_keyword || has_question_word;
-        let is_uniswap_related = has_uniswap_term || has_version_term;
-        
-        // Additional checks to exclude non-documentation queries:
-        
-        // Check: if it's a simple command (like "swap 1 ETH for USDC"), don't trigger RAG
-        let is_simple_command = lower_input.contains("swap") && 
-                               (lower_input.contains("eth") || lower_input.contains("usdc") || lower_input.contains("token")) &&
-                               !has_question_mark &&
-                               !has_docs_keyword &&
-                               !has_question_word;
-        
-        // Check: if it's a deployment check (like "Is contract X deployed?"), don't trigger RAG
-        let is_deployment_check = lower_input.contains("deployed") && 
-                                 (lower_input.contains("is") || lower_input.contains("check")) &&
-                                 !has_docs_keyword &&
-                                 !has_question_word;
-        
-        // Check: if it's just terms without question format, don't trigger RAG
-        let is_just_terms = !has_question_mark && !has_docs_keyword && !has_question_word;
-        
-        // Check: if it's just a simple phrase with contract/interface terms, don't trigger RAG
-        let is_simple_phrase = (lower_input.contains("contract") || lower_input.contains("interface")) &&
-                              !has_question_mark &&
-                              !has_docs_keyword &&
-                              !has_question_word &&
-                              lower_input.split_whitespace().count() <= 3; // Simple phrases like "SwapRouter contract"
-        
-        // Trigger RAG if it's a question format AND uniswap related AND NOT excluded
-        is_question_format && is_uniswap_related && !is_simple_command && !is_deployment_check && !is_just_terms && !is_simple_phrase
+        // If no clear indicators, use semantic search as a fallback
+        let results = match rag_system.search(input, 1).await {
+            Ok(results) => results,
+            Err(e) => return Err(crate::ClientError::RagError(format!("Failed to search: {}", e))),
+        };
+
+        if results.is_empty() {
+            return Ok(false);
+        }
+
+        // Get the similarity score of the best match
+        let (score, _, _) = &results[0];
+
+        // If the similarity is high enough, consider it a documentation query
+        // Higher threshold since this is a fallback
+        Ok(*score > 0.8)
     }
 
     /// Handle general questions without tool calling
@@ -437,9 +392,9 @@ I'm here to make blockchain interactions simple and accessible through natural l
             rag_system.load_documentation(docs_path).await?;
         }
         
-        // If no external docs loaded, add sample documentation
+        // If no external docs loaded, warn but continue
         if rag_system.document_count() == 0 {
-            rag_system.add_sample_documentation().await?;
+            warn!("⚠️ No documentation loaded - RAG system will be initialized without documents");
         }
         
         // Create embeddings for agentic RAG integration
@@ -556,8 +511,8 @@ I'm here to make blockchain interactions simple and accessible through natural l
 
     /// Test function to verify RAG logic (for debugging)
     #[cfg(test)]
-    pub fn test_rag_logic(&self, input: &str) -> bool {
-        self.is_documentation_query(input)
+    pub async fn test_rag_logic(&self, input: &str) -> crate::Result<bool> {
+        self.is_documentation_query(input).await
     }
 
     /// Generate the system prompt for Claude

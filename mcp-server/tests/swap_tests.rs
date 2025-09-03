@@ -4,6 +4,7 @@
 //! including ETH to token swaps using Uniswap V2 Router.
 
 use mcp_server::services::blockchain::{BlockchainService, SwapRequest};
+use rmcp::handler::server::tool::Parameters;
 use std::str::FromStr;
 
 #[tokio::test]
@@ -71,14 +72,14 @@ async fn test_swap_functionality() {
                      swap_request.to_token, swap_request.dex.as_deref().unwrap_or("Uniswap V2"));
             println!("📝 EXPECTED: Swap transaction or error if no private key");
             
-            let result = service.swap_tokens(rmcp::handler::server::wrapper::Parameters(swap_request)).await;
+            let result = service.swap_tokens(Parameters(swap_request)).await;
             
             match result {
                 Ok(call_result) => {
                     println!("✅ Swap transaction successful!");
                     println!("📊 Response: {:?}", call_result);
                     
-                    if let Some(content) = call_result.content.first() {
+                    if let Some(content) = call_result.content {
                         println!("📝 Swap Response: {:?}", content);
                         println!("✅ Response validation: PASSED");
                     }
@@ -190,7 +191,7 @@ async fn test_eth_to_weth_direct_swap() {
                      swap_request.amount, swap_request.from_token, swap_request.to_token);
             println!("📝 EXPECTED: This should work without needing Uniswap liquidity");
             
-            let result = service.swap_tokens(rmcp::handler::server::wrapper::Parameters(swap_request)).await;
+            let result = service.swap_tokens(Parameters(swap_request)).await;
             
             match result {
                 Ok(call_result) => {
@@ -198,7 +199,7 @@ async fn test_eth_to_weth_direct_swap() {
                     println!("📊 Response: {:?}", call_result);
                     
                     // Extract the text content
-                    if let Some(content) = call_result.content.first() {
+                    if let Some(content) = call_result.content {
                         println!("📝 Swap Response: {:?}", content);
                         
                         // Check if it contains success information
@@ -250,11 +251,11 @@ async fn test_uniswap_v2_swap_vs_direct() {
                 slippage: Some("100".to_string()),
             };
             
-            let direct_result = service.swap_tokens(rmcp::handler::server::wrapper::Parameters(direct_swap_request)).await;
+            let direct_result = service.swap_tokens(Parameters(direct_swap_request)).await;
             
             match direct_result {
                 Ok(call_result) => {
-                    if let Some(content) = call_result.content.first() {
+                    if let Some(content) = call_result.content {
                         if format!("{:?}", content).contains("ETH to WETH Swap (Direct)") {
                             println!("✅ Direct swap: SUCCESS");
                         } else {
@@ -277,11 +278,11 @@ async fn test_uniswap_v2_swap_vs_direct() {
                 slippage: Some("500".to_string()),
             };
             
-            let uniswap_result = service.swap_tokens(rmcp::handler::server::wrapper::Parameters(uniswap_swap_request)).await;
+            let uniswap_result = service.swap_tokens(Parameters(uniswap_swap_request)).await;
             
             match uniswap_result {
                 Ok(call_result) => {
-                    if let Some(content) = call_result.content.first() {
+                    if let Some(content) = call_result.content {
                         if format!("{:?}", content).contains("FAILED") || format!("{:?}", content).contains("revert") {
                             println!("✅ Uniswap V2 swap: FAILED (expected due to no liquidity)");
                         } else {

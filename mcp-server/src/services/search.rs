@@ -11,10 +11,7 @@
 use anyhow::Result;
 use reqwest::Client;
 use rmcp::{
-    ErrorData as McpError,
-    handler::server::wrapper::Parameters,
-    model::{CallToolResult, Content},
-    tool, tool_router,
+    handler::server::tool::Parameters, model::{CallToolResult, Content}, tool, tool_router, ErrorData as McpError
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

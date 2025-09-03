@@ -18,11 +18,7 @@ use cast::Cast;
 use eyre::Result;
 use num_traits::cast::ToPrimitive;
 use rmcp::{
-    ErrorData as McpError, ServerHandler,
-    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
-    schemars::JsonSchema,
-    tool, tool_handler, tool_router,
+    handler::server::{router::tool::ToolRouter, tool::Parameters}, model::{CallToolResult, Content, ServerCapabilities, ServerInfo}, schemars::JsonSchema, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler
 };
 use serde::{Deserialize, Serialize};
 use std::{env, str::FromStr, time::Duration};
@@ -150,25 +146,27 @@ impl BlockchainService {
             .connect(&rpc_url)
             .await?;
 
-        // Dynamically get all accounts from the anvil node
-        let available_addresses = provider.get_accounts().await
-            .map_err(|e| eyre::eyre!("Failed to get accounts from anvil: {}", e))?;
-
-        if available_addresses.is_empty() {
-            return Err(eyre::eyre!("No accounts available from anvil node"));
-        }
+        // Hardcoded accounts from anvil output
+        let available_addresses = vec![
+            Address::from_str("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266").unwrap(), // Account 0 - Alice
+            Address::from_str("0x70997970C51812dc3A010C7d01b50e0d17dc79C8").unwrap(), // Account 1 - Bob
+            Address::from_str("0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC").unwrap(), // Account 2
+            Address::from_str("0x90F79bf6EB2c4f870365E785982E1f101E93b906").unwrap(), // Account 3
+            Address::from_str("0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65").unwrap(), // Account 4
+            Address::from_str("0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc").unwrap(), // Account 5
+            Address::from_str("0x976EA74026E726554dB657fA54763abd0C3a0aa9").unwrap(), // Account 6
+            Address::from_str("0x14dC79964da2C08b23698B3D3cc7Ca32193d9955").unwrap(), // Account 7
+            Address::from_str("0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f").unwrap(), // Account 8
+            Address::from_str("0xa0Ee7A142d267C1f36714E4a8F75612F20a79720").unwrap(), // Account 9
+        ];
 
         // PRD requirement: Default sender is account 0 (first account from anvil)
         let alice_address = available_addresses[0]; // Account 0 - default sender
         
         // PRD requirement: Bob is account 1 (second account from anvil)
-        let bob_address = if available_addresses.len() > 1 {
-            available_addresses[1] // Account 1 - default recipient
-        } else {
-            return Err(eyre::eyre!("Need at least 2 accounts from anvil for Alice and Bob"));
-        };
+        let bob_address = available_addresses[1]; // Account 1 - default recipient
 
-        // Load accounts dynamically - addresses only, no private keys from RPC
+        // Load accounts from hardcoded list
         let anvil_accounts = Self::load_anvil_accounts(&available_addresses).await?;
         
         // Load Alice's private key from environment variable for transaction signing

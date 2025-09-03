@@ -4,6 +4,7 @@
 //! including web search functionality and swap intent handling.
 
 use mcp_server::services::search::{SearchService, WebSearchRequest, SwapIntentRequest, SearchResponse, SearchResult};
+use rmcp::handler::server::tool::Parameters;
 
 #[tokio::test]
 async fn test_search_service_creation() {
@@ -178,14 +179,14 @@ async fn test_web_search_functionality() {
             println!("📝 INPUT: Searching for \"{}\"", search_request.query);
             println!("📝 EXPECTED: Search results or API error");
             
-            let result = service.web_search(rmcp::handler::server::wrapper::Parameters(search_request)).await;
+            let result = service.web_search(Parameters(search_request)).await;
             
             match result {
                 Ok(call_result) => {
                     println!("✅ Web search successful!");
                     println!("📊 Response: {:?}", call_result);
                     
-                    if let Some(content) = call_result.content.first() {
+                    if let Some(content) = call_result.content {
                         println!("📝 Search Response: {:?}", content);
                         println!("✅ Response validation: PASSED");
                     }
@@ -230,14 +231,14 @@ async fn test_swap_intent_functionality() {
                      swap_request.from_token, swap_request.to_token, swap_request.amount);
             println!("📝 EXPECTED: Swap intent response with recommendations");
             
-            let result = service.handle_swap_intent(rmcp::handler::server::wrapper::Parameters(swap_request)).await;
+            let result = service.handle_swap_intent(Parameters(swap_request)).await;
             
             match result {
                 Ok(call_result) => {
                     println!("✅ Swap intent successful!");
                     println!("📊 Response: {:?}", call_result);
                     
-                    if let Some(content) = call_result.content.first() {
+                    if let Some(content) = call_result.content {
                         println!("📝 Swap Intent Response: {:?}", content);
                         println!("✅ Response validation: PASSED");
                     }

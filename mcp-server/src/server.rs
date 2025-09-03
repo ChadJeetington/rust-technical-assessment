@@ -67,8 +67,11 @@ impl McpServer {
             Default::default(),
         );
 
-        // Create axum router with MCP service
-        let router = axum::Router::new().nest_service(&config.mcp_path, service);
+        // Create axum router with MCP service and CORS
+        let router = axum::Router::new()
+            .route("/health", axum::routing::get(|| async { "OK" }))
+            .nest_service(&config.mcp_path, service)
+            .layer(tower_http::cors::CorsLayer::permissive());
         let tcp_listener = tokio::net::TcpListener::bind(format!("{}:{}", config.host, config.port)).await?;
         
         info!("✅ MCP Combined Server ready on port {} - exposing blockchain and search tools", config.port);
@@ -105,8 +108,10 @@ impl McpServer {
             Default::default(),
         );
 
-        // Create axum router with MCP service
-        let router = axum::Router::new().nest_service(&config.mcp_path, service);
+        // Create axum router with MCP service and CORS
+        let router = axum::Router::new()
+            .nest_service(&config.mcp_path, service)
+            .layer(tower_http::cors::CorsLayer::permissive());
         let tcp_listener = tokio::net::TcpListener::bind(format!("{}:{}", config.host, config.port)).await?;
         
         info!("✅ MCP Blockchain Server ready on port {} - exposing balance, transfer, and is_contract_deployed tools", config.port);

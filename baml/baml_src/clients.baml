@@ -15,7 +15,7 @@ client<llm> CustomGPT4oMini {
     model "gpt-4o-mini"
     api_key env.OPENAI_API_KEY
   }
-}
+} 
 
 client<llm> CustomSonnet {
   provider anthropic

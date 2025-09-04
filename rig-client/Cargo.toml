@@ -43,3 +43,9 @@ url = "2.5"
 async-trait = "0.1"
 # Cryptographic hashing
 sha2 = "0.10"
+# BAML generated client
+baml-client = { path = "../baml/baml_client" }
+
+[[example]]
+name = "resume_demo"
+path = "examples/resume_demo.rs"

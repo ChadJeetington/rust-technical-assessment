@@ -22,8 +22,9 @@ use rmcp::{
     handler::server::{router::tool::ToolRouter, tool::Parameters}, model::{CallToolResult, Content, ServerCapabilities, ServerInfo}, schemars::JsonSchema, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler
 };
 use serde::{Deserialize, Serialize};
-use std::{env, str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration};
 use tracing::{info, error};
+use crate::config::BlockchainConfig;
 
 /// Request structure for balance queries
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -126,24 +127,20 @@ pub struct BlockchainService {
     anvil_accounts: Vec<AccountInfo>,
     /// Tool router for MCP
     tool_router: ToolRouter<Self>,
+    /// Configuration for the blockchain service
+    config: BlockchainConfig,
 }
 
 #[tool_router]
 impl BlockchainService {
     /// Create a new blockchain service instance
     pub async fn new() -> Result<Self> {
-        // Load environment variables from .env file if it exists
-        if dotenv::dotenv().is_err() {
-            info!("No .env file found, using system environment variables only");
-        } else {
-            info!("Loaded environment variables from .env file");
-        }
-        
-        let rpc_url = "http://127.0.0.1:8545".to_string();
+        // Load configuration from environment
+        let config = BlockchainConfig::from_env();
         
         // Create provider connection to anvil
         let provider = ProviderBuilder::<_, _, AnyNetwork>::default()
-            .connect(&rpc_url)
+            .connect(&config.rpc_url)
             .await?;
 
         // Hardcoded accounts from anvil output
@@ -169,16 +166,9 @@ impl BlockchainService {
         // Load accounts from hardcoded list
         let anvil_accounts = Self::load_anvil_accounts(&available_addresses).await?;
         
-        // Load Alice's private key from environment variable for transaction signing
-        let alice_private_key = env::var("ALICE_PRIVATE_KEY")
-            .or_else(|_| env::var("PRIVATE_KEY"))
-            .unwrap_or_else(|_| {
-                info!("⚠️  No ALICE_PRIVATE_KEY or PRIVATE_KEY found in environment");
-                info!("    Transactions will not be possible without a private key");
-                String::new()
-            });
+        let alice_private_key = config.alice_private_key.clone();
 
-        info!("🔗 Blockchain service configured for anvil network at {}", rpc_url);
+        info!("🔗 Blockchain service configured for anvil network at {}", config.rpc_url);
         info!("👤 Alice (Account 0): {} (default sender per PRD)", alice_address);
         info!("👤 Bob (Account 1): {} (default recipient per PRD)", bob_address);
         info!("📊 Loaded {} accounts from anvil", anvil_accounts.len());
@@ -195,6 +185,7 @@ impl BlockchainService {
             alice_private_key,
             anvil_accounts,
             tool_router: Self::tool_router(),
+            config,
         })
     }
 
@@ -701,7 +692,7 @@ impl BlockchainService {
         }
 
         let dex_name = dex.unwrap_or_else(|| "Uniswap V2".to_string());
-        let slippage_bps = slippage.unwrap_or_else(|| "500".to_string()); // Default 5% slippage
+        let slippage_bps = slippage.unwrap_or_else(|| self.config.default_slippage_bps.clone());
         
         // Step 1: Get Uniswap V2 Router address (hardcoded for mainnet)
         let router_address = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"; // Uniswap V2 Router
@@ -728,7 +719,7 @@ impl BlockchainService {
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_err(|e| McpError::internal_error(format!("Failed to get system time: {}", e), None))?
-                .as_secs() + 300
+                .as_secs() + self.config.default_deadline_secs
         );
         
         info!("📊 Swap parameters - Amount: {} wei, Path: {:?}, Deadline: {}", 

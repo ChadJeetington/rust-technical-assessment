@@ -11,8 +11,6 @@ use walkdir::WalkDir;
 
 /// Uniswap documentation source that reads from pre-processed files
 pub struct UniswapDocSource {
-    /// Base directory containing pre-processed documentation
-    base_dir: PathBuf,
     /// Documentation version mapping
     versions: Vec<UniswapVersion>,
 }
@@ -51,7 +49,7 @@ impl UniswapDocSource {
             },
         ];
 
-        Self { base_dir, versions }
+        Self { versions }
     }
 }
 

@@ -22,9 +22,18 @@ use rmcp::{
     handler::server::{router::tool::ToolRouter, tool::Parameters}, model::{CallToolResult, Content, ServerCapabilities, ServerInfo}, schemars::JsonSchema, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler
 };
 use serde::{Deserialize, Serialize};
-use std::{str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration, collections::HashMap, sync::Mutex};
 use tracing::{info, error};
 use crate::config::BlockchainConfig;
+use tokio::time::sleep;
+use once_cell::sync::Lazy;
+use reqwest;
+use regex::Regex;
+
+/// Global cache for token contract addresses - populated from web search results
+static TOKEN_ADDRESS_CACHE: Lazy<Mutex<HashMap<String, Address>>> = Lazy::new(|| {
+    Mutex::new(HashMap::new())
+});
 
 /// Request structure for balance queries
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -133,6 +142,90 @@ pub struct BlockchainService {
 
 #[tool_router]
 impl BlockchainService {
+    /// Search for a token's contract address using cache and web search
+    async fn search_token_address(&self, token_symbol: &str) -> Result<Option<Address>, McpError> {
+        println!("\n🔎 Starting search for token contract address: {}", token_symbol);
+        
+        // Step 1: Check cache first
+        let cache_result = TOKEN_ADDRESS_CACHE.lock()
+            .map_err(|e| McpError::internal_error(format!("Cache lock error: {}", e), None))?
+            .get(token_symbol)
+            .copied();
+            
+        if let Some(cached_address) = cache_result {
+            println!("✨ Found {} in cache! Address: {:?}", token_symbol, cached_address);
+            return Ok(Some(cached_address));
+        }
+        
+        println!("🌐 {} not in cache, searching web...", token_symbol);
+        
+        // Prepare search query
+        let query = format!("{} token contract address ethereum mainnet", token_symbol);
+        info!("🌐 Web searching: {}", query);
+        
+        // Create HTTP client
+        let client = reqwest::Client::new();
+        
+        // Use environment variable for API key
+        let api_key = std::env::var("BRAVE_SEARCH_API_KEY")
+            .map_err(|_| McpError::internal_error("BRAVE_SEARCH_API_KEY environment variable not set".to_string(), None))?;
+            
+        // Add delay to avoid rate limiting (1 second between requests)
+        println!("⏳ Rate limit protection: waiting 1 second before API call...");
+        sleep(Duration::from_secs(1)).await;
+        
+        // Make request to Brave Search API
+        let response = client
+            .get("https://api.search.brave.com/res/v1/web/search")
+            .header("X-Subscription-Token", api_key)
+            .header("Accept", "application/json")
+            .query(&[("q", &query)])
+            .send()
+            .await
+            .map_err(|e| McpError::internal_error(format!("Search API request failed: {}", e), None))?;
+            
+        if !response.status().is_success() {
+            return Err(McpError::internal_error(
+                format!("Search API returned error status: {}", response.status()),
+                None
+            ));
+        }
+        
+        let search_result: serde_json::Value = response.json().await
+            .map_err(|e| McpError::internal_error(format!("Failed to parse search response: {}", e), None))?;
+            
+        // Extract contract address using regex
+        let address_regex = Regex::new(r"0x[a-fA-F0-9]{40}")
+            .map_err(|e| McpError::internal_error(format!("Regex creation failed: {}", e), None))?;
+            
+        if let Some(results) = search_result["web"]["results"].as_array() {
+            for result in results {
+                if let Some(text) = result["description"].as_str() {
+                    if let Some(address_match) = address_regex.find(text) {
+                        let address_str = address_match.as_str();
+                        if let Ok(address) = Address::from_str(address_str) {
+                            println!("\n💎 Found contract address for {} via web search!", token_symbol);
+                            println!("📝 Contract Address: {:?}", address);
+                            
+                            // Cache the result
+                            TOKEN_ADDRESS_CACHE.lock()
+                                .map_err(|e| McpError::internal_error(format!("Cache lock error: {}", e), None))?
+                                .insert(token_symbol.to_string(), address);
+                                
+                            println!("💾 Stored {} address in cache for future use", token_symbol);
+                            return Ok(Some(address));
+                        }
+                    }
+                }
+            }
+        }
+        
+        println!("\n❌ Could not find contract address for {}", token_symbol);
+        println!("   - Not found in cache");
+        println!("   - Web search returned no valid results");
+        Ok(None)
+    }
+
     /// Create a new blockchain service instance
     pub async fn new() -> Result<Self> {
         // Load configuration from environment
@@ -214,10 +307,17 @@ impl BlockchainService {
         Parameters(BalanceRequest { who }): Parameters<BalanceRequest>,
     ) -> Result<CallToolResult, McpError> {
         let who_clone = who.clone();
-        let address = NameOrAddress::from(who)
-            .resolve(&self.provider)
-            .await
-            .map_err(|e| McpError::invalid_params(format!("Failed to resolve address '{}': {}", who_clone, e), None))?;
+        
+        // First try to parse as direct address
+        let address = if let Ok(addr) = Address::from_str(&who) {
+            addr
+        } else {
+            // If not a direct address, try ENS resolution
+            NameOrAddress::from(who)
+                .resolve(&self.provider)
+                .await
+                .map_err(|e| McpError::invalid_params(format!("Failed to resolve address '{}': {}", who_clone, e), None))?
+        };
         let balance = self.provider.get_balance(address).await
             .map_err(|e| McpError::internal_error(format!("Failed to get balance: {}", e), None))?;
 
@@ -694,9 +794,12 @@ impl BlockchainService {
         let dex_name = dex.unwrap_or_else(|| "Uniswap V2".to_string());
         let slippage_bps = slippage.unwrap_or_else(|| self.config.default_slippage_bps.clone());
         
-        // Step 1: Get Uniswap V2 Router address (hardcoded for mainnet)
-        let router_address = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"; // Uniswap V2 Router
-        let router_addr = Address::from_str(router_address)
+        // Look up Uniswap V2 Router address
+        let router_address = match self.search_token_address("Uniswap V2 Router").await? {
+            Some(addr) => format!("{:?}", addr),
+            None => return Err(McpError::internal_error("Failed to find Uniswap V2 Router address".to_string(), None)),
+        };
+        let router_addr = Address::from_str(&router_address)
             .map_err(|e| McpError::internal_error(format!("Invalid router address: {}", e), None))?;
         
         info!("📋 Using Uniswap V2 Router: {}", router_address);
@@ -820,9 +923,12 @@ impl BlockchainService {
     async fn swap_eth_to_weth_direct(&self, amount: String) -> Result<CallToolResult, McpError> {
         info!("🎯 Executing direct ETH to WETH swap for {} ETH", amount);
         
-        // Step 1: Get WETH contract address
-        let weth_address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"; // WETH on mainnet
-        let weth_addr = Address::from_str(weth_address)
+        // Look up WETH contract address
+        let weth_address = match self.search_token_address("WETH").await? {
+            Some(addr) => format!("{:?}", addr),
+            None => return Err(McpError::internal_error("Failed to find WETH contract address".to_string(), None)),
+        };
+        let weth_addr = Address::from_str(&weth_address)
             .map_err(|e| McpError::internal_error(format!("Invalid WETH address: {}", e), None))?;
         
         info!("📋 Using WETH contract: {}", weth_address);
@@ -912,9 +1018,12 @@ impl BlockchainService {
     async fn swap_weth_to_eth_direct(&self, amount: String) -> Result<CallToolResult, McpError> {
         info!("🎯 Executing direct WETH to ETH swap for {} WETH", amount);
         
-        // Step 1: Get WETH contract address
-        let weth_address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"; // WETH on mainnet
-        let weth_addr = Address::from_str(weth_address)
+        // Look up WETH contract address
+        let weth_address = match self.search_token_address("WETH").await? {
+            Some(addr) => format!("{:?}", addr),
+            None => return Err(McpError::internal_error("Failed to find WETH contract address".to_string(), None)),
+        };
+        let weth_addr = Address::from_str(&weth_address)
             .map_err(|e| McpError::internal_error(format!("Invalid WETH address: {}", e), None))?;
         
         info!("📋 Using WETH contract: {}", weth_address);
@@ -1036,47 +1145,52 @@ impl BlockchainService {
 
     /// Helper method to get token addresses for common tokens
     async fn get_token_addresses(&self, from_token: &str, to_token: &str) -> Result<(Address, Address), McpError> {
-        // Hardcoded addresses for common tokens on mainnet
-        let token_addresses = [
-            ("ETH", "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"), // WETH
-            ("WETH", "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"),
-            ("USDC", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
-            ("USDT", "0xdAC17F958D2ee523a2206206994597C13D831ec7"),
-            ("DAI", "0x6B175474E89094C44Da98b954EedeAC495271d0F"),
-            ("LINK", "0x514910771AF9Ca656af840dff83E8264EcF986CA"),
-            ("UNI", "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984"),
-        ];
-
-        let from_addr = if let Some((_, addr)) = token_addresses
-            .iter()
-            .find(|(symbol, _)| symbol.eq_ignore_ascii_case(from_token))
-        {
-            Address::from_str(addr)
-                .map_err(|e| McpError::internal_error(format!("Invalid from token address: {}", e), None))?
+        info!("🔍 Getting token addresses for {} → {}", from_token, to_token);
+        
+        // Try to get addresses from cache or search
+        let from_addr = if let Ok(addr) = Address::from_str(from_token) {
+            // Direct address provided
+            addr
         } else {
-            // If not found, try to parse as address
-            Address::from_str(from_token)
-                .map_err(|_| McpError::invalid_params(
-                    format!("Unknown token: {}. Supported tokens: ETH, WETH, USDC, USDT, DAI, LINK, UNI", from_token),
-                    None
-                ))?
+            // Try cache/search
+            match self.search_token_address(from_token).await? {
+                Some(addr) => addr,
+                None => {
+                    return Err(McpError::invalid_params(
+                        format!(
+                            "Could not find contract address for token: {}.\n\
+                            The token was not found in cache and web search returned no results.\n\
+                            Please provide the contract address directly (e.g., '0x...').",
+                            from_token
+                        ),
+                        None
+                    ));
+                }
+            }
         };
 
-        let to_addr = if let Some((_, addr)) = token_addresses
-            .iter()
-            .find(|(symbol, _)| symbol.eq_ignore_ascii_case(to_token))
-        {
-            Address::from_str(addr)
-                .map_err(|e| McpError::internal_error(format!("Invalid to token address: {}", e), None))?
+        let to_addr = if let Ok(addr) = Address::from_str(to_token) {
+            // Direct address provided
+            addr
         } else {
-            // If not found, try to parse as address
-            Address::from_str(to_token)
-                .map_err(|_| McpError::invalid_params(
-                    format!("Unknown token: {}. Supported tokens: ETH, WETH, USDC, USDT, DAI, LINK, UNI", to_token),
-                    None
-                ))?
+            // Try cache/search
+            match self.search_token_address(to_token).await? {
+                Some(addr) => addr,
+                None => {
+                    return Err(McpError::invalid_params(
+                        format!(
+                            "Could not find contract address for token: {}.\n\
+                            The token was not found in cache and web search returned no results.\n\
+                            Please provide the contract address directly (e.g., '0x...').",
+                            to_token
+                        ),
+                        None
+                    ));
+                }
+            }
         };
 
+        info!("✅ Found addresses: {} → {}", from_addr, to_addr);
         Ok((from_addr, to_addr))
     }
 

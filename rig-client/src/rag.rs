@@ -7,7 +7,8 @@
 //! 4. Search functionality for Uniswap docs and contracts
 
 use rig::{
-    embeddings::EmbeddingsBuilder, vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
+    embeddings::EmbeddingsBuilder, 
+    vector_store::{in_memory_store::InMemoryVectorStore, VectorStoreIndex},
     Embed,
 };
 use rig_fastembed::{Client as FastembedClient, FastembedModel};
@@ -513,5 +514,68 @@ impl UniswapRagSystem {
         }
         
         Ok(docs)
+    }
+
+    /// Search against a set of example queries to determine query type
+    pub async fn search_examples(&self, query: &str, examples: &[&str]) -> crate::Result<Vec<(f64, String, String)>> {
+        debug!("🔍 Comparing query '{}' against {} examples", query, examples.len());
+        
+        // Create a temporary vector store for the examples
+        #[derive(rig::Embed, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+        struct QueryDoc {
+            #[embed]
+            text: String,
+        }
+        
+        // Create embeddings for examples
+        let embedding_model = self.embedding_client.embedding_model(&FastembedModel::AllMiniLML6V2Q);
+        let mut builder = EmbeddingsBuilder::new(embedding_model.clone());
+        
+        // Add examples
+        let example_docs: Vec<QueryDoc> = examples.iter()
+            .map(|&text| QueryDoc { text: text.to_string() })
+            .collect();
+            
+        for doc in example_docs.iter() {
+            builder = builder.document(doc.clone())
+                .map_err(|e| crate::ClientError::RagError(format!("Failed to add example: {}", e)))?;
+        }
+        
+        // Build embeddings and create vector store
+        let embeddings = builder.build()
+            .await
+            .map_err(|e| crate::ClientError::RagError(format!("Failed to build embeddings: {}", e)))?;
+            
+        let vector_store = InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.text.clone());
+        let index = vector_store.index(embedding_model);
+        
+        // Search for similar examples
+        let req = rig::vector_store::request::VectorSearchRequest::builder()
+            .query(query)
+            .samples(examples.len() as u64)
+            .build()
+            .map_err(|e| crate::ClientError::RagError(format!("Failed to build search request: {}", e)))?;
+            
+        let results = index
+            .top_n::<QueryDoc>(req)
+            .await
+            .map_err(|e| crate::ClientError::RagError(format!("Search failed: {}", e)))?;
+            
+        debug!("📋 Found {} matching examples", results.len());
+            
+        // Convert results to expected format
+        let formatted_results = results.into_iter()
+            .map(|(score, _, doc)| (score, format!("example_{}", examples.iter().position(|&e| e == doc.text).unwrap_or(0)), doc.text))
+            .collect();
+            
+        Ok(formatted_results)
+    }
+
+    /// Calculate cosine similarity between two vectors
+    fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
+        let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+        (dot_product / (norm_a * norm_b)) as f64
     }
 }

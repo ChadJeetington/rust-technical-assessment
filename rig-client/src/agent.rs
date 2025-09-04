@@ -29,6 +29,12 @@ use rmcp::{
 use tracing::{debug, error, info, warn};
 use crate::rag::UniswapRagSystem;
 
+/// Helper struct for semantic intent classification
+struct IntentCluster {
+    name: &'static str,
+    examples: Vec<&'static str>,
+}
+
 /// The main blockchain agent that combines Claude AI with MCP tools and RAG
 pub struct BlockchainAgent {
     /// Claude AI agent configured with MCP tools and RAG dynamic context
@@ -191,47 +197,169 @@ impl BlockchainAgent {
         general_patterns.iter().any(|pattern| lower_input.contains(pattern))
     }
 
+    /// Preprocess and normalize query text for better semantic matching
+    fn preprocess_query(&self, input: &str) -> String {
+        let mut processed = input.to_lowercase();
+        
+        // Remove common filler words that don't add semantic meaning
+        let filler_words = [
+            "please", "could you", "would you", "can you", "i want to",
+            "i need to", "i'd like to", "just", "actually", "basically",
+        ];
+        
+        for word in filler_words.iter() {
+            processed = processed.replace(word, "");
+        }
+        
+        // Normalize common variations
+        let replacements = [
+            ("documentation", "docs"),
+            ("implement", "implementation"),
+            ("example", "examples"),
+            ("tutorial", "guide"),
+            ("error", "errors"),
+            ("function", "functions"),
+            ("parameter", "parameters"),
+        ];
+        
+        for (from, to) in replacements.iter() {
+            processed = processed.replace(from, to);
+        }
+        
+        // Remove extra whitespace
+        processed = processed
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+            
+        processed
+    }
+
     /// Check if the input is a documentation/help query that should trigger RAG
     async fn is_documentation_query(&self, input: &str) -> crate::Result<bool> {
+        // Preprocess the query
+        let processed_input = self.preprocess_query(input);
         // If RAG system is not initialized, return false
         let rag_system = match &self.rag_system {
             Some(rag) => rag,
             None => return Ok(false),
         };
 
-        // First, check if this is a blockchain operation
-        let blockchain_keywords = ["balance", "eth", "send", "transfer", "deploy", "gas", "alice", "bob"];
-        let input_lower = input.to_lowercase();
-        
-        // If it contains blockchain keywords, it's not a documentation query
-        if blockchain_keywords.iter().any(|&word| input_lower.contains(word)) {
-            return Ok(false);
-        }
-        
-        // Documentation keywords that should trigger RAG
-        let doc_keywords = ["how", "what", "explain", "uniswap", "documentation", "docs", "swap", "pool", "liquidity", "pair", "slippage", "flash"];
-        
-        // If it contains documentation keywords, it's a documentation query
-        if doc_keywords.iter().any(|&word| input_lower.contains(word)) {
-            return Ok(true);
-        }
-        
-        // If no clear indicators, use semantic search as a fallback
-        let results = match rag_system.search(input, 1).await {
-            Ok(results) => results,
-            Err(e) => return Err(crate::ClientError::RagError(format!("Failed to search: {}", e))),
-        };
+        // Define query intents with rich semantic examples
+        let intent_clusters = vec![
+            // Documentation intent cluster
+            IntentCluster {
+                name: "documentation",
+                examples: vec![
+                    // Conceptual understanding
+                    "explain how the system works in detail",
+                    "help me understand the architecture",
+                    "what is the purpose of this component",
+                    "describe the relationship between A and B",
+                    "clarify how these parts interact",
+                    
+                    // Technical documentation
+                    "show me the API documentation",
+                    "what are the configuration options",
+                    "list all available parameters",
+                    "explain the function parameters",
+                    "what are the return values",
+                    
+                    // Best practices
+                    "what is the recommended way to implement this",
+                    "show me the best practices for X",
+                    "how should I structure this code",
+                    "what are common pitfalls to avoid",
+                    "guide me through the proper setup",
+                    
+                    // Troubleshooting
+                    "why am I getting this error",
+                    "how do I fix this issue",
+                    "what causes this behavior",
+                    "help me debug this problem",
+                    "explain the error message",
+                ],
+            },
+            // Operation intent cluster
+            IntentCluster {
+                name: "operation",
+                examples: vec![
+                    // Direct actions
+                    "execute the transaction",
+                    "deploy the contract",
+                    "send tokens to address",
+                    "transfer funds between accounts",
+                    "call this function now",
+                    
+                    // State queries
+                    "get the current balance",
+                    "check transaction status",
+                    "fetch contract state",
+                    "read storage value",
+                    "query event logs",
+                    
+                    // Multi-step operations
+                    "swap tokens using the router",
+                    "provide liquidity to pool",
+                    "stake tokens in contract",
+                    "bridge assets to L2",
+                    "upgrade proxy implementation",
+                ],
+            },
+        ];
 
-        if results.is_empty() {
-            return Ok(false);
+        // First, try direct semantic search in the documentation
+        let direct_results = rag_system.search(&processed_input, 3).await?;
+        
+        // Calculate documentation relevance score
+        let doc_relevance = direct_results.first()
+            .map(|(score, _, _)| *score)
+            .unwrap_or(0.0);
+
+        // Get semantic similarity scores for each intent cluster
+        let mut cluster_scores = Vec::new();
+        
+        for cluster in &intent_clusters {
+            let results = rag_system.search_examples(&processed_input, &cluster.examples).await?;
+            
+            // Calculate cluster score using top 3 matches with exponential decay
+            let cluster_score = results.iter()
+                .take(3)
+                .enumerate()
+                .map(|(i, (score, _, _))| score * (0.7_f64.powi(i as i32)))
+                .sum::<f64>() / 3.0;
+                
+            cluster_scores.push((cluster.name, cluster_score));
+            
+            info!("📊 {}: {:.3}", cluster.name, cluster_score);
         }
 
-        // Get the similarity score of the best match
-        let (score, _, _) = &results[0];
+        // Find the highest scoring intent cluster
+        let (best_intent, best_score) = cluster_scores.iter()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+            .unwrap();
 
-        // If the similarity is high enough, consider it a documentation query
-        // Higher threshold since this is a fallback
-        Ok(*score > 0.8)
+        // Calculate confidence metrics
+        let score_diff = cluster_scores.iter()
+            .filter(|(name, _)| *name != *best_intent)
+            .map(|(_, score)| best_score - score)
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap_or(0.0);
+
+        info!("📊 Intent Analysis:");
+        info!("   Best Intent: {} (score: {:.3})", best_intent, best_score);
+        info!("   Score Difference: {:.3}", score_diff);
+        info!("   Doc Relevance: {:.3}", doc_relevance);
+
+        // Make classification decision based on:
+        // 1. Intent classification confidence (score_diff)
+        // 2. Documentation relevance
+        // 3. Absolute intent score
+        let is_doc_query = (*best_intent == "documentation" && score_diff > 0.15) || doc_relevance > 0.8;
+        
+        info!("📑 Query Classification: {}", if is_doc_query { "Documentation" } else { "Operation" });
+        
+        Ok(is_doc_query)
     }
 
     /// Handle general questions without tool calling

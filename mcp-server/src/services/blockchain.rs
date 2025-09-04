@@ -14,16 +14,16 @@ use alloy_primitives::{Address, U256, Bytes, TxHash};
 use alloy_provider::{Provider, ProviderBuilder, RootProvider, PendingTransactionBuilder};
 use alloy_rpc_types::TransactionRequest;
 use alloy_serde::WithOtherFields;
-use cast::Cast;
+use cast::{Cast, SimpleCast};
 use eyre::Result;
 use num_traits::cast::ToPrimitive;
+use alloy_primitives::hex;
 use rmcp::{
     handler::server::{router::tool::ToolRouter, tool::Parameters}, model::{CallToolResult, Content, ServerCapabilities, ServerInfo}, schemars::JsonSchema, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler
 };
 use serde::{Deserialize, Serialize};
 use std::{env, str::FromStr, time::Duration};
 use tracing::{info, error};
-use hex;
 
 /// Request structure for balance queries
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -392,16 +392,14 @@ impl BlockchainService {
         
         info!("✅ Address validation passed");
         
-        // ERC-20 balanceOf(address) function selector: 0x70a08231
-        // Encode the function call: balanceOf(account_address)
-        let mut call_data = Vec::new();
-        call_data.extend_from_slice(&[0x70, 0xa0, 0x82, 0x31]); // balanceOf selector
-        call_data.extend_from_slice(&[0; 12]); // Pad to 32 bytes
-        call_data.extend_from_slice(account_addr.as_slice()); // Account address (20 bytes)
-        
+        // Use Cast to encode and call balanceOf
+        let calldata = SimpleCast::calldata_encode("balanceOf(address)", &[account_addr.to_string()])
+            .map_err(|e| McpError::internal_error(format!("Failed to encode balanceOf call: {}", e), None))?;
+            
         let call_request = TransactionRequest::default()
             .to(token_addr)
-            .input(Bytes::from(call_data).into());
+            .input(Bytes::from_str(&calldata)
+                .map_err(|e| McpError::internal_error(format!("Failed to parse calldata: {}", e), None))?.into());
         
         info!("📞 Making balanceOf call to token contract...");
         
@@ -425,7 +423,8 @@ impl BlockchainService {
         
         // Try to get token symbol and decimals for better formatting
         info!("🔍 Getting token info (symbol and decimals)...");
-        let (symbol, decimals) = self.get_token_info(&token_addr).await;
+        let (symbol, decimals) = self.get_token_info(&token_addr).await
+            .map_err(|e| McpError::internal_error(format!("Failed to get token info: {}", e), None))?;
         info!("✅ Token info: symbol={}, decimals={}", symbol, decimals);
         
         let formatted_balance = if decimals > 0 {
@@ -449,13 +448,17 @@ impl BlockchainService {
     }
 
     /// Helper function to get token symbol and decimals
-    async fn get_token_info(&self, token_addr: &Address) -> (String, u8) {
+    async fn get_token_info(&self, token_addr: &Address) -> Result<(String, u8), McpError> {
         info!("🔍 Getting token info for address: {}", token_addr);
         
-        // Try to get symbol - ERC-20 symbol() function selector: 0x95d89b41
+        // Use Cast to encode symbol() call
+        let symbol_calldata = SimpleCast::calldata_encode("symbol()", &[] as &[&str])
+            .map_err(|e| McpError::internal_error(format!("Failed to encode symbol call: {}", e), None))?;
+            
         let symbol_call = TransactionRequest::default()
             .to(*token_addr)
-            .input(Bytes::from([0x95, 0xd8, 0x9b, 0x41]).into());
+            .input(Bytes::from_str(&symbol_calldata)
+                .map_err(|e| McpError::internal_error(format!("Failed to parse symbol calldata: {}", e), None))?.into());
         
         let symbol = if let Ok(result) = self.provider.call(WithOtherFields::new(symbol_call)).await {
             info!("✅ Symbol call successful, result length: {}", result.len());
@@ -479,10 +482,14 @@ impl BlockchainService {
             "UNKNOWN".to_string()
         };
         
-        // Try to get decimals - ERC-20 decimals() function selector: 0x313ce567
+        // Use Cast to encode decimals() call
+        let decimals_calldata = SimpleCast::calldata_encode("decimals()", &[] as &[&str])
+            .map_err(|e| McpError::internal_error(format!("Failed to encode decimals call: {}", e), None))?;
+            
         let decimals_call = TransactionRequest::default()
             .to(*token_addr)
-            .input(Bytes::from([0x31, 0x3c, 0xe5, 0x67]).into());
+            .input(Bytes::from_str(&decimals_calldata)
+                .map_err(|e| McpError::internal_error(format!("Failed to parse decimals calldata: {}", e), None))?.into());
         
         let decimals = if let Ok(result) = self.provider.call(WithOtherFields::new(decimals_call)).await {
             info!("✅ Decimals call successful, result length: {}", result.len());
@@ -500,7 +507,7 @@ impl BlockchainService {
         };
         
         info!("✅ Token info complete: symbol={}, decimals={}", symbol, decimals);
-        (symbol, decimals)
+        Ok((symbol, decimals))
     }
 
     /// Validate recipient address - PRD requirement for address validation
@@ -834,10 +841,9 @@ impl BlockchainService {
         
         info!("💰 Amount to wrap: {} ETH ({} wei)", amount, amount_wei);
         
-        // Step 3: Encode the deposit function call
-        // WETH deposit() function selector: 0xd0e30db0
-        let mut calldata = Vec::new();
-        calldata.extend_from_slice(&[0xd0, 0xe3, 0x0d, 0xb0]); // deposit() selector
+        // Use Cast to encode deposit function call
+        let calldata = SimpleCast::calldata_encode("deposit()", &[] as &[&str])
+            .map_err(|e| McpError::internal_error(format!("Failed to encode deposit call: {}", e), None))?;
         
         info!("🔧 Encoded deposit calldata: 0x{}", hex::encode(&calldata));
         
@@ -845,7 +851,7 @@ impl BlockchainService {
         let tx = TransactionRequest::default()
             .to(weth_addr)
             .value(amount_wei) // Send ETH with the transaction
-            .input(Bytes::from(calldata).into())
+            .input(Bytes::from(hex::decode(&calldata[2..]).unwrap()).into())
             .from(self.alice_address);
         
         let tx = WithOtherFields::new(tx);
@@ -927,21 +933,16 @@ impl BlockchainService {
         
         info!("💰 Amount to unwrap: {} WETH ({} wei)", amount, amount_wei);
         
-        // Step 3: Encode the withdraw function call
-        // WETH withdraw(uint256) function selector: 0x2e1a7d4d
-        let mut calldata = Vec::new();
-        calldata.extend_from_slice(&[0x2e, 0x1a, 0x7d, 0x4d]); // withdraw() selector
-        
-        // Encode the amount parameter (uint256) - 32 bytes
-        let amount_bytes: [u8; 32] = amount_wei.to_be_bytes();
-        calldata.extend_from_slice(&amount_bytes);
+        // Use Cast to encode withdraw function call
+        let calldata = SimpleCast::calldata_encode("withdraw(uint256)", &[amount_wei.to_string()])
+            .map_err(|e| McpError::internal_error(format!("Failed to encode withdraw call: {}", e), None))?;
         
         info!("🔧 Encoded withdraw calldata: 0x{}", hex::encode(&calldata));
         
         // Step 4: Create and send transaction using Cast
         let tx = TransactionRequest::default()
             .to(weth_addr)
-            .input(Bytes::from(calldata).into())
+            .input(Bytes::from(hex::decode(&calldata[2..]).unwrap()).into())
             .from(self.alice_address);
         
         let tx = WithOtherFields::new(tx);
@@ -1106,43 +1107,23 @@ impl BlockchainService {
         to: Address,
         deadline: U256,
     ) -> Result<String, McpError> {
-        // Function signature: swapExactETHForTokens(uint256 amountOutMin, address[] path, address to, uint256 deadline)
-        // Function selector: 0x7ff36ab5
+        // Use Cast to encode swapExactETHForTokens
+        // Convert path addresses to strings
+        let path_strings: Vec<String> = path.iter()
+            .map(|addr| addr.to_string())
+            .collect();
+            
+        let args = vec![
+            amount_out_min.to_string(),
+            format!("[{}]", path_strings.join(",")),
+            to.to_string(),
+            deadline.to_string(),
+        ];
         
-        let mut calldata = Vec::new();
-        
-        // Function selector
-        calldata.extend_from_slice(&[0x7f, 0xf3, 0x6a, 0xb5]);
-        
-        // Encode amountOutMin (uint256) - 32 bytes
-        let amount_out_min_bytes: [u8; 32] = amount_out_min.to_be_bytes();
-        calldata.extend_from_slice(&amount_out_min_bytes);
-        
-        // Encode path array offset (uint256) - 32 bytes
-        let path_offset = U256::from(96); // 32 + 32 + 32 = 96 bytes for the first 3 parameters
-        let path_offset_bytes: [u8; 32] = path_offset.to_be_bytes();
-        calldata.extend_from_slice(&path_offset_bytes);
-        
-        // Encode to address (address) - 32 bytes
-        let mut to_bytes = [0u8; 32];
-        to_bytes[12..].copy_from_slice(to.as_slice()); // Address is 20 bytes, padded to 32
-        calldata.extend_from_slice(&to_bytes);
-        
-        // Encode deadline (uint256) - 32 bytes
-        let deadline_bytes: [u8; 32] = deadline.to_be_bytes();
-        calldata.extend_from_slice(&deadline_bytes);
-        
-        // Encode path array length (uint256) - 32 bytes
-        let path_length = U256::from(path.len());
-        let path_length_bytes: [u8; 32] = path_length.to_be_bytes();
-        calldata.extend_from_slice(&path_length_bytes);
-        
-        // Encode path array elements (address[]) - each address is 32 bytes
-        for addr in path {
-            let mut addr_bytes = [0u8; 32];
-            addr_bytes[12..].copy_from_slice(addr.as_slice()); // Address is 20 bytes, padded to 32
-            calldata.extend_from_slice(&addr_bytes);
-        }
+        let calldata = SimpleCast::calldata_encode(
+            "swapExactETHForTokens(uint256,address[],address,uint256)",
+            &args
+        ).map_err(|e| McpError::internal_error(format!("Failed to encode swap call: {}", e), None))?;
         
         Ok(format!("0x{}", hex::encode(calldata)))
     }

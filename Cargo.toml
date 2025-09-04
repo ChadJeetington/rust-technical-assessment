@@ -1,5 +1,5 @@
 [workspace]
-members = ["mcp-server", "rig-client"]
+members = ["mcp-server", "rig-client", "baml"]
 resolver = "2"
 
 [workspace.package]

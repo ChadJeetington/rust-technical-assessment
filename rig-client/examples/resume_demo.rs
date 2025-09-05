@@ -3,11 +3,22 @@ use baml_client::apis::configuration::Configuration;
 use baml_client::apis::default_api;
 use baml_client::models::ExtractResumeRequest;
 use dotenv::dotenv;
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load environment variables from .env file
+    // Load environment variables
     dotenv().ok();
+    
+    // Verify environment variables are loaded
+    match env::var("OPENAI_API_KEY") {
+        Ok(_) => println!("Successfully loaded .env file"),
+        Err(e) => println!("Error loading .env file: {}", e),
+    }
+
+    // Print API key presence (not the actual keys)
+    println!("OpenAI API key present: {}", std::env::var("OPENAI_API_KEY").is_ok());
+    println!("Anthropic API key present: {}", std::env::var("ANTHROPIC_API_KEY").is_ok());
 
     // Create configuration with default settings
     let config = Configuration::new();
